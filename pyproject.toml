@@ -1,0 +1,23 @@
+[build-system]
+requires = [
+   "hatchling"
+]
+build-backend = "hatchling.build"
+ 
+[tool.hatch.build.targets.wheel]
+      packages = ["src/zerosumfc"]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.4.1",
+]
+
+[project]
+name = "zerosumfc"
+version = "0.1.0"
+description = "Zero Sum Fight Club"
+readme = "README.md"
+requires-python = ">=3.12"
+
+dependencies = []
+
