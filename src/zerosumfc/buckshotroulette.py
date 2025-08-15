@@ -214,7 +214,7 @@ class Game:
             damage = 2 if self._saw_active else 1
             self._health.damage(self._translate(target), damage)
         self._saw_active = False
-        if target != self._current_actor:
+        if target == RelativeRole.OPPONENT or shell == Shell.LIVE:
             self._end_turn()
         if shell == Shell.LIVE:
             return Hit(target)
