@@ -92,6 +92,46 @@ class Agent(ABC):
         pass
 
 
+class RandomAgent(Agent):
+    def reset_shells(self, live: int, blank: int):
+        pass
+
+    def get_move(self, state: GameState) -> Action:
+        actions: list[Action] = [Shoot(RelativeRole.OPPONENT), Shoot(RelativeRole.SELF)]
+        for item, count in state.personal_state.items.items():
+            if count > 0:
+                actions.append(Use(item))
+        return random.choice(actions)
+
+    def receive_feedback(self, feedback: Optional[Feedback]):
+        pass
+
+
+class StdioAgent(Agent):
+    def reset_shells(self, live: int, blank: int):
+        print(f"The gun has been loaded with {live} rounds and {blank} blanks.")
+
+    def get_move(self, state: GameState) -> Action:
+        StdioAgent.print_state(state)
+        print("You shoot the dealer")
+        return Shoot(RelativeRole.OPPONENT)
+
+    def receive_feedback(self, feedback: Optional[Feedback]):
+        if feedback is not None:
+            print(feedback)
+
+    @staticmethod
+    def print_state(state: GameState):
+        print(f"Your health: {state.personal_state.health}")
+        print(f"Opponent's health: {state.opponent_state.health}")
+        print("Your items:")
+        for item, count in state.personal_state.items.items():
+            if count > 0:
+                print(f"{item.name} ({count})")
+
+
+
+
 class Health:
 
     def __init__(self, dealer_health, player_health, max_health):
@@ -287,3 +327,12 @@ class Game:
             self._current_actor = GameRole.PLAYER
 
 
+def main():
+    dealer = RandomAgent()
+    player = StdioAgent()
+    game = Game(dealer, player, 4)
+    winner = game.run()
+    print(f"The winner is {winner}")
+
+if __name__ == "__main__":
+    main()
