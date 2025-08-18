@@ -10,6 +10,7 @@ build-backend = "hatchling.build"
 [tool.uv]
 dev-dependencies = [
     "pytest>=8.4.1",
+    "ruff>=0.12.9",
 ]
 
 [project]
@@ -21,3 +22,26 @@ requires-python = ">=3.12"
 
 dependencies = []
 
+[tool.ruff]
+# Set the maximum line length to 79.
+line-length = 79
+
+[tool.ruff.lint]
+select = [
+    "ASYNC", # flake8-async: check for async/await syntax
+    "D",     # pydocstyle: check docstring style
+    "E",     # pycodestyle: errors
+    "F",     # pyflakes: detect various errors
+    "I",     # isort: check import order
+    "ICN",   # flake-8 import conventions,
+    "INT",   # flake8-gettext
+    "LOG",   # flake8-logging-format: check for logging format,
+    "Q",     # flake8-quotes
+    "RSE",   # flake8-raise, use raise statements instead of return statements
+    "TID",   # flake8-tidy-imports: check import tidiness
+    "UP",    # pyupgrade: check for Python syntax updates
+    "W",     # pycodestyle: warnings
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D"]

@@ -1,29 +1,38 @@
+"""Simulates a game of Buckshot Roulette."""
+
+import random
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum, auto, unique
-import random
-from typing import Optional
 
 
 @unique
 class GameRole(Enum):
+    """Which role are we talking about from the game's perspective."""
+
     PLAYER = auto()
     DEALER = auto()
 
     @property
     def oponent(self):
+        """The actor's oponent's role."""
         if self == GameRole.PLAYER:
             return GameRole.DEALER
         return GameRole.PLAYER
 
 
-@unique 
+@unique
 class RelativeRole(Enum):
+    """Which role are we talking about from the players' perspectives."""
+
     SELF = auto()
     OPPONENT = auto()
 
+
 @unique
 class Item(Enum):
+    """Items which can be used to gain stats boosts."""
+
     GLASS = auto()
     CIGARETTES = auto()
     BEER = auto()
@@ -33,95 +42,163 @@ class Item(Enum):
 
 @unique
 class Shell(Enum):
+    """Shells can be live or blank."""
+
     LIVE = auto()
     BLANK = auto()
 
 
 class Action(ABC):
+    """The action which the user wants to take.
+
+    Can be either shooting or using an item
+    """
+
     pass
 
 
 @dataclass(frozen=True)
 class Shoot(Action):
+    """Indicates who the agent wants to shoot."""
+
     target: RelativeRole
 
 
 @dataclass(frozen=True)
 class Use(Action):
+    """Which item does the agent want to use."""
+
     item: Item
 
 
 @dataclass
 class PlayerState:
+    """The player's health and item counts.
+
+    This should represent the information that a player could see looking at
+    a live screen of Buckshot Roulette. Potentially there could be other,
+    hidden elements of state wich the agent will need to keep track of
+    themselves.
+    """
+
     health: int
     items: dict[Item, int]
 
 
 @dataclass
 class GameState:
+    """The information that is provided to an agent before they make a move.
+
+    N.B. This information is presented relative to the agent's perspective, so
+    that the agent does not need to know whether they are the dealer or the
+    player.
+    """
+
     personal_state: PlayerState
     opponent_state: PlayerState
 
 
-
 class Feedback(ABC):
+    """Any information that could be sent to the agent after they move."""
+
     pass
+
 
 @dataclass
 class Hit(Feedback):
+    """Tell the agent they scored a hit."""
+
     target: RelativeRole
 
-@dataclass 
+
+@dataclass
 class SeeShell(Feedback):
+    """Tell the agent what color shell they have just seen.
+
+    This could be a chambered shell, or one that has just been ejected. It is
+    up to the agent to use context to know which is which.
+    """
+
     shell: Shell
 
 
-
 class Agent(ABC):
+    """An agent capable of playing Buckshot Roulette.
+
+    The primary function of this agent is to implement the `get_move` method
+    which selects a move based on the visible state of the game.
+    """
 
     @abstractmethod
-    def reset_shells(self, live:int, blank: int):
+    def reset_shells(self, live: int, blank: int):
+        """Informs the angent how many live and blank shells have been loaded.
+
+        Called when the shotgun is reloaded. Does not tell the agent what order
+        the shells have been inserted in.
+        """
         pass
 
     @abstractmethod
     def get_move(self, state: GameState) -> Action:
+        """Ask the agent to select a move based on the visible state.
+
+        Note that 'visible' state is just the information that is presented
+        on-screen during the Buckshot Roulette game. There may be elements of
+        hidden game state which the agent needss to keep track of itself.
+        """
         pass
 
     @abstractmethod
-    def receive_feedback(self, feedback: Optional[Feedback]):
+    def receive_feedback(self, feedback: Feedback | None):
+        """Tell the agent the result of a move."""
         pass
 
 
 class RandomAgent(Agent):
+    """Dumb agent that just picks a move at random."""
+
     def reset_shells(self, live: int, blank: int):
+        """Ignored."""
         pass
 
     def get_move(self, state: GameState) -> Action:
-        actions: list[Action] = [Shoot(RelativeRole.OPPONENT), Shoot(RelativeRole.SELF)]
+        """Pick a move at random based on what is currently possible."""
+        actions: list[Action] = [
+            Shoot(RelativeRole.OPPONENT),
+            Shoot(RelativeRole.SELF),
+        ]
         for item, count in state.personal_state.items.items():
             if count > 0:
                 actions.append(Use(item))
         return random.choice(actions)
 
-    def receive_feedback(self, feedback: Optional[Feedback]):
+    def receive_feedback(self, feedback: Feedback | None):
+        """Ignored."""
         pass
 
 
 class StdioAgent(Agent):
+    """Prints game info to a stream and queries the user for their move."""
+
     def reset_shells(self, live: int, blank: int):
-        print(f"The gun has been loaded with {live} rounds and {blank} blanks.")
+        """Print out the number of shells that have been loaded."""
+        print(
+            f"The gun has been loaded with {live} rounds and {blank} blanks."
+        )
 
     def get_move(self, state: GameState) -> Action:
-        StdioAgent.print_state(state)
+        """Prompt the user for a move & parse their response."""
+        StdioAgent._print_state(state)
         print("You shoot the dealer")
         return Shoot(RelativeRole.OPPONENT)
 
-    def receive_feedback(self, feedback: Optional[Feedback]):
+    def receive_feedback(self, feedback: Feedback | None):
+        """Print out the feedback if it is not None."""
         if feedback is not None:
             print(feedback)
 
     @staticmethod
-    def print_state(state: GameState):
+    def _print_state(state: GameState):
         print(f"Your health: {state.personal_state.health}")
         print(f"Opponent's health: {state.opponent_state.health}")
         print("Your items:")
@@ -130,11 +207,14 @@ class StdioAgent(Agent):
                 print(f"{item.name} ({count})")
 
 
-
-
 class Health:
+    """Keeps track of the dealer and player's health stats.
+
+    Ensures that they cannot go above the max or below zero.
+    """
 
     def __init__(self, dealer_health, player_health, max_health):
+        """Set the health for the dealer and player, along with the maximum."""
         self._state = {
             GameRole.DEALER: dealer_health,
             GameRole.PLAYER: player_health,
@@ -142,66 +222,97 @@ class Health:
         self._max_health = max_health
 
     def __getitem__(self, role: GameRole) -> int:
+        """Get the health for the actor."""
         return self._state[role]
 
     def damage(self, target: GameRole, damage: int):
-        self._state[target] =  max(0, self._state[target] - damage)
+        """Deal damage to the target."""
+        self._state[target] = max(0, self._state[target] - damage)
 
     def heal(self, target: GameRole):
+        """Heal the traget."""
         self._state[target] = min(self._max_health, self._state[target] + 1)
 
-
     def as_tuple(self):
+        """Convert to the tuple (dealer health, player health)."""
         return tuple(self._state[a] for a in GameRole)
 
     @classmethod
     def start(cls, health):
+        """Create a new Health object with both actors at max health."""
         return cls(health, health, health)
 
 
-
 class Shotgun:
+    """Keeps track of the randomized shells in the game."""
+
     def __init__(self, num_live: int, num_blank):
+        """Initialise the shotgun with the specified number of shells.
+
+        Just specify the number of shells, the order is randomised.
+        """
         self._live = num_live
-        self._blanks = num_blank 
+        self._blanks = num_blank
         self._shells = [Shell.LIVE] * self._live + [Shell.BLANK] * self._blanks
         random.shuffle(self._shells)
         self._next_shell = None
 
     @property
     def initial_load(self) -> tuple[int, int]:
+        """Get the number of shells that were initailly loaded in the gun."""
         return (self._live, self._blanks)
 
     @property
     def empty(self):
+        """Is this gun empty."""
         return not self._shells
 
     def peek(self) -> Shell | None:
+        """Check what kind of shell is currently chambered."""
         if self._shells:
             return self._shells[-1]
 
     def pop(self) -> Shell | None:
+        """Fire/Eject the chambered shell."""
         if self._shells:
             return self._shells.pop()
 
     @classmethod
     def random(cls, max_shells=4):
+        """Initialise a shotgun with a randomised number of shells."""
         live = random.randint(1, max_shells)
         blank = random.randint(1, max_shells)
         return cls(live, blank)
 
 
 class ItemTable:
-    def __init__(self):
-        self._state = {item:0 for item in Item}
+    """Dict like object to keep track of which items the actor has."""
 
-    def add(self, item:Item):
+    def __init__(self, max_capacity=8):
+        """Initialise the table with 0 items."""
+        self._state = {item: 0 for item in Item}
+        self._max_capacity = max_capacity
+
+    def __len__(self):
+        """Total number of items in the actor's possesion."""
+        return sum(self._state.values())
+
+    def add(self, item: Item) -> bool:
+        """Add an item to the table if it is below max capacity."""
+        if len(self) >= self._max_capacity:
+            return False
         self._state[item] += 1
-    
+        return True
+
     def to_dict(self) -> dict[Item, int]:
+        """Convert this back to a normal dict."""
         return dict(self._state.items())
 
     def use_item(self, item: Item) -> bool:
+        """Try to use an item.
+
+        If the item is available, return true and decease the item's count.
+        """
         if self._state[item] > 1:
             self._state[item] -= 1
             return True
@@ -209,46 +320,33 @@ class ItemTable:
 
 
 class Game:
+    """Keeps track of a game of Buckshot Roulette played between two agents."""
+
     def __init__(self, dealer: Agent, player: Agent, initial_health: int):
+        """Initailise a game with two agents and set their initial health."""
         self._health = Health.start(initial_health)
-        self._agents = {
-            GameRole.DEALER: dealer,
-            GameRole.PLAYER: player
-        }
+        self._agents = {GameRole.DEALER: dealer, GameRole.PLAYER: player}
 
         self._current_actor = GameRole.PLAYER
         self._handcuff_active = False
         self._saw_active = False
         self._items = {
             GameRole.DEALER: ItemTable(),
-            GameRole.PLAYER: ItemTable()
+            GameRole.PLAYER: ItemTable(),
         }
-        self.reload()
+        self._reload()
 
-    def reload(self):
+    def _reload(self):
         self._shotgun = Shotgun.random()
         for agent in self._agents.values():
             agent.reset_shells(*self._shotgun.initial_load)
-
-
-    @property
-    def initial_shells(self) -> tuple[int, int]:
-        return self._shotgun.initial_load
-
-    @property
-    def player_health(self) -> int:
-        return self._health[GameRole.PLAYER]
-
-    @property
-    def dealer_health(self) -> int:
-        return self._health[GameRole.DEALER]
 
     def _translate(self, target: RelativeRole) -> GameRole:
         if target == RelativeRole.SELF:
             return self._current_actor
         return self._current_actor.oponent
 
-    def shoot(self, target: RelativeRole) -> Feedback | None:
+    def _shoot(self, target: RelativeRole) -> Feedback | None:
         shell = self._shotgun.pop()
         if shell == Shell.LIVE:
             damage = 2 if self._saw_active else 1
@@ -259,13 +357,13 @@ class Game:
         if shell == Shell.LIVE:
             return Hit(target)
 
-    def use_item(self, item: Item) -> Feedback | None:
+    def _use_item(self, item: Item) -> Feedback | None:
         if self._items[self._current_actor].use_item(item):
             match item:
                 case Item.GLASS:
                     shell = self._shotgun.peek()
                     if shell is not None:
-                        return SeeShell(shell) 
+                        return SeeShell(shell)
                 case Item.BEER:
                     shell = self._shotgun.pop()
                     if shell is not None:
@@ -277,45 +375,43 @@ class Game:
                 case Item.HANDCUFFS:
                     self._handcuff_active = True
 
-    def perform_action(self, action: Action) -> Feedback | None:
+    def _perform_action(self, action: Action) -> Feedback | None:
         match action:
             case Shoot(target):
-                return self.shoot(target)
+                return self._shoot(target)
             case Use(item):
-                return self.use_item(item)
+                return self._use_item(item)
 
     def run(self) -> GameRole:
-        while self.winner is None:
+        """Start the game and continue until we have a winner."""
+        while self._winner is None:
             actor = self._current_actor
             opponent = actor.oponent
             agent = self._agents[actor]
             actor_state = self._state_for_role(actor)
             opponent_state = self._state_for_role(opponent)
             state = GameState(
-                personal_state=actor_state, 
-                opponent_state=opponent_state)
+                personal_state=actor_state, opponent_state=opponent_state
+            )
             action = agent.get_move(state)
-            feedback = self.perform_action(action)
+            feedback = self._perform_action(action)
             agent.receive_feedback(feedback)
 
             if self._shotgun.empty:
-                self.reload()
-        return self.winner
-
+                self._reload()
+        return self._winner
 
     def _state_for_role(self, role: GameRole):
-            return PlayerState(
-                health=self._health[role],
-                items=self._items[role].to_dict()
-            )
+        return PlayerState(
+            health=self._health[role], items=self._items[role].to_dict()
+        )
 
     @property
-    def winner(self) -> GameRole | None:
+    def _winner(self) -> GameRole | None:
         if self._health[GameRole.DEALER] == 0:
             return GameRole.PLAYER
         if self._health[GameRole.PLAYER] == 0:
             return GameRole.DEALER
-
 
     def _end_turn(self):
         if self._handcuff_active:
@@ -328,11 +424,13 @@ class Game:
 
 
 def main():
+    """Run a game of Buckshot Roulette between the random agent and a human."""
     dealer = RandomAgent()
     player = StdioAgent()
     game = Game(dealer, player, 4)
     winner = game.run()
     print(f"The winner is {winner}")
+
 
 if __name__ == "__main__":
     main()
