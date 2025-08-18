@@ -1,4 +1,4 @@
-from zerosumfc.buckshotroulette import GameRole
+from zerosumfc.data import GameRole
 
 
 def test_role_opponent():
