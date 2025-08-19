@@ -15,6 +15,7 @@ from zerosumfc.data import (
     SeeShell,
     Shell,
     Shoot,
+    Use
 )
 
 
@@ -207,7 +208,7 @@ class Game:
             action = agent.get_move(state)
             feedback = self._perform_action(action)
             agent.receive_feedback(feedback)
-
+            self._agents[opponent].opponent_move(action, feedback)
             if self._shotgun.empty:
                 self._reload()
         return self._winner

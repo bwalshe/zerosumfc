@@ -1,4 +1,4 @@
-"""Agents capable of playing Buckshot Roulette"""
+"""Agents capable of playing Buckshot Roulette."""
 
 import random
 from abc import ABC, abstractmethod
@@ -14,7 +14,7 @@ class Agent(ABC):
     """
 
     @abstractmethod
-    def reset_shells(self, live: int, blank: int):
+    def reset_shells(self, live: int, blank: int) -> None:
         """Informs the angent how many live and blank shells have been loaded.
 
         Called when the shotgun is reloaded. Does not tell the agent what order
@@ -35,6 +35,11 @@ class Agent(ABC):
     @abstractmethod
     def receive_feedback(self, feedback: Feedback | None):
         """Tell the agent the result of a move."""
+        pass
+
+    @abstractmethod
+    def opponent_move(self, action: Action, result: Feedback | None) -> None:
+        """Update the agent on its opponent's move and the result."""
         pass
 
 
@@ -60,6 +65,10 @@ class RandomAgent(Agent):
         """Ignored."""
         pass
 
+    def opponent_move(self, action: Action, result: Feedback | None) -> None:
+        """Ignored."""
+        pass
+
 
 class StdioAgent(Agent):
     """Prints game info to a stream and queries the user for their move."""
@@ -80,6 +89,12 @@ class StdioAgent(Agent):
         """Print out the feedback if it is not None."""
         if feedback is not None:
             print(feedback)
+
+    def opponent_move(self, action: Action, result: Feedback | None) -> None:
+        """Update the agent on its opponent's move and the result."""
+        print(f"Opponent: {action}")
+        if result is not None:
+            print(result)
 
     @staticmethod
     def _print_state(state: GameState):
