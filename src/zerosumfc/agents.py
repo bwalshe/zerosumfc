@@ -70,37 +70,3 @@ class RandomAgent(Agent):
         pass
 
 
-class StdioAgent(Agent):
-    """Prints game info to a stream and queries the user for their move."""
-
-    def reset_shells(self, live: int, blank: int):
-        """Print out the number of shells that have been loaded."""
-        print(
-            f"The gun has been loaded with {live} rounds and {blank} blanks."
-        )
-
-    def get_move(self, state: GameState) -> Action:
-        """Prompt the user for a move & parse their response."""
-        StdioAgent._print_state(state)
-        print("You shoot the dealer")
-        return Shoot(RelativeRole.OPPONENT)
-
-    def receive_feedback(self, feedback: Feedback | None):
-        """Print out the feedback if it is not None."""
-        if feedback is not None:
-            print(feedback)
-
-    def opponent_move(self, action: Action, result: Feedback | None) -> None:
-        """Update the agent on its opponent's move and the result."""
-        print(f"Opponent: {action}")
-        if result is not None:
-            print(result)
-
-    @staticmethod
-    def _print_state(state: GameState):
-        print(f"Your health: {state.personal_state.health}")
-        print(f"Opponent's health: {state.opponent_state.health}")
-        print("Your items:")
-        for item, count in state.personal_state.items.items():
-            if count > 0:
-                print(f"{item.name} ({count})")

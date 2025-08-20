@@ -2,7 +2,7 @@
 
 import random
 
-from zerosumfc.agents import Agent, RandomAgent, StdioAgent
+from zerosumfc.agents import Agent, RandomAgent
 from zerosumfc.data import (
     Action,
     Feedback,
@@ -17,6 +17,7 @@ from zerosumfc.data import (
     Shoot,
     Use
 )
+from zerosumfc.textagent import TextAgent
 
 
 class Health:
@@ -238,7 +239,7 @@ class Game:
 def main():
     """Run a game of Buckshot Roulette between the random agent and a human."""
     dealer = RandomAgent()
-    player = StdioAgent()
+    player = TextAgent()
     game = Game(dealer, player, 4)
     winner = game.run()
     print(f"The winner is {winner}")
