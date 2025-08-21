@@ -1,59 +1,85 @@
 """Simulates a game of Buckshot Roulette."""
 
 import random
+from collections.abc import Sequence
 
 from zerosumfc.agents import Agent, RandomAgent
 from zerosumfc.data import (
     Action,
     Feedback,
-    GameRole,
     GameState,
     Hit,
     Item,
     PlayerState,
-    RelativeRole,
+    Role,
     SeeShell,
     Shell,
     Shoot,
-    Use
+    Use,
 )
 from zerosumfc.textagent import TextAgent
 
 
-class Health:
-    """Keeps track of the dealer and player's health stats.
+class PlayerStateManager:
+    """Manages the state for a player.
 
-    Ensures that they cannot go above the max or below zero.
+    This class will ensure that the player's health stays within bounds and
+    that they cannot have too many items.
     """
 
-    def __init__(self, dealer_health, player_health, max_health):
-        """Set the health for the dealer and player, along with the maximum."""
-        self._state = {
-            GameRole.DEALER: dealer_health,
-            GameRole.PLAYER: player_health,
-        }
+    MAX_ITEMS = 8
+
+    def __init__(self, max_health: int):
+        """Initialise with max health and no items."""
+        self._health = max_health
         self._max_health = max_health
 
-    def __getitem__(self, role: GameRole) -> int:
-        """Get the health for the actor."""
-        return self._state[role]
+        self._inventory = dict()
 
-    def damage(self, target: GameRole, damage: int):
-        """Deal damage to the target."""
-        self._state[target] = max(0, self._state[target] - damage)
+    def damage(self, amount: int) -> None:
+        """Reduce health bracketed above 0."""
+        self._health = max(0, self._health - amount)
 
-    def heal(self, target: GameRole):
-        """Heal the traget."""
-        self._state[target] = min(self._max_health, self._state[target] + 1)
+    def heal(self, amount: int) -> None:
+        """Increase health, bracketed to stay <= max_health."""
+        self._health = min(self._max_health, self._health + amount)
 
-    def as_tuple(self):
-        """Convert to the tuple (dealer health, player health)."""
-        return tuple(self._state[a] for a in GameRole)
+    @property
+    def item_count(self):
+        """The total number of items in the player's inventory."""
+        return sum(self._inventory.values())
 
-    @classmethod
-    def start(cls, health):
-        """Create a new Health object with both actors at max health."""
-        return cls(health, health, health)
+    def add_item(self, item: Item):
+        """Add this item to the players inventory if it is not already full.
+
+        The maximum number of items is controlled by
+        PlayerStateManager.MAX_ITEMS.
+        """
+        if self.item_count < PlayerStateManager.MAX_ITEMS:
+            self._inventory[item] = self._inventory.get(item, 0) + 1
+
+    def add_all(self, items: Sequence[Item]):
+        """Add multiple items to the inventory."""
+        for item in items:
+            self.add_item(item)
+
+    def is_available(self, item: Item) -> bool:
+        """Return true if the player have the item in their inventory."""
+        return self._inventory.get(item, 0) > 0
+
+    def use_item(self, item: Item) -> bool:
+        """If the item count is greater than 0, use up the item."""
+        if self.is_available(item):
+            self._inventory[item] -= 1
+            return True
+        return False
+
+    @property
+    def state(self):
+        """Get the publicly visible player state."""
+        return PlayerState(
+            health=self._health, inventory=dict(self._inventory)
+        )
 
 
 class Shotgun:
@@ -98,80 +124,44 @@ class Shotgun:
         return cls(live, blank)
 
 
-class ItemTable:
-    """Dict like object to keep track of which items the actor has."""
-
-    def __init__(self, max_capacity=8):
-        """Initialise the table with 0 items."""
-        self._state = {item: 0 for item in Item}
-        self._max_capacity = max_capacity
-
-    def __len__(self):
-        """Total number of items in the actor's possesion."""
-        return sum(self._state.values())
-
-    def add(self, item: Item) -> bool:
-        """Add an item to the table if it is below max capacity."""
-        if len(self) >= self._max_capacity:
-            return False
-        self._state[item] += 1
-        return True
-
-    def to_dict(self) -> dict[Item, int]:
-        """Convert this back to a normal dict."""
-        return dict(self._state.items())
-
-    def use_item(self, item: Item) -> bool:
-        """Try to use an item.
-
-        If the item is available, return true and decease the item's count.
-        """
-        if self._state[item] > 1:
-            self._state[item] -= 1
-            return True
-        return False
-
-
 class Game:
     """Keeps track of a game of Buckshot Roulette played between two agents."""
 
     def __init__(self, dealer: Agent, player: Agent, initial_health: int):
         """Initailise a game with two agents and set their initial health."""
-        self._health = Health.start(initial_health)
-        self._agents = {GameRole.DEALER: dealer, GameRole.PLAYER: player}
-
-        self._current_actor = GameRole.PLAYER
+        self._agents = {Role.DEALER: dealer, Role.PLAYER: player}
+        self._player_state = {
+            Role.DEALER: PlayerStateManager(initial_health),
+            Role.PLAYER: PlayerStateManager(initial_health),
+        }
+        self._current_role = Role.PLAYER
         self._handcuff_active = False
         self._saw_active = False
-        self._items = {
-            GameRole.DEALER: ItemTable(),
-            GameRole.PLAYER: ItemTable(),
-        }
         self._reload()
 
     def _reload(self):
         self._shotgun = Shotgun.random()
-        for agent in self._agents.values():
+        for role, agent in self._agents.items():
             agent.reset_shells(*self._shotgun.initial_load)
+            new_items = [random.choice(list(Item)) for _ in range(3)]
+            self._player_state[role].add_all(new_items)
+        self._current_role = Role.PLAYER
 
-    def _translate(self, target: RelativeRole) -> GameRole:
-        if target == RelativeRole.SELF:
-            return self._current_actor
-        return self._current_actor.oponent
-
-    def _shoot(self, target: RelativeRole) -> Feedback | None:
+    def _shoot(self, target: Role) -> Feedback | None:
         shell = self._shotgun.pop()
+        target_state = self._player_state[target]
         if shell == Shell.LIVE:
             damage = 2 if self._saw_active else 1
-            self._health.damage(self._translate(target), damage)
+            target_state.damage(damage)
         self._saw_active = False
-        if target == RelativeRole.OPPONENT or shell == Shell.LIVE:
+        if target == self._current_role or shell == Shell.LIVE:
             self._end_turn()
         if shell == Shell.LIVE:
             return Hit(target)
 
     def _use_item(self, item: Item) -> Feedback | None:
-        if self._items[self._current_actor].use_item(item):
+        state_manager = self._player_state[self._current_role]
+        if state_manager.use_item(item):
             match item:
                 case Item.GLASS:
                     shell = self._shotgun.peek()
@@ -182,7 +172,7 @@ class Game:
                     if shell is not None:
                         return SeeShell(shell)
                 case Item.CIGARETTES:
-                    self._health.heal(self._current_actor)
+                    state_manager.heal(1)
                 case Item.SAW:
                     self._saw_active = True
                 case Item.HANDCUFFS:
@@ -195,16 +185,16 @@ class Game:
             case Use(item):
                 return self._use_item(item)
 
-    def run(self) -> GameRole:
+    def run(self) -> Role:
         """Start the game and continue until we have a winner."""
         while self._winner is None:
-            actor = self._current_actor
+            actor = self._current_role
             opponent = actor.oponent
             agent = self._agents[actor]
-            actor_state = self._state_for_role(actor)
-            opponent_state = self._state_for_role(opponent)
+            dealer_state = self._player_state[Role.DEALER].state
+            player_state = self._player_state[Role.PLAYER].state
             state = GameState(
-                personal_state=actor_state, opponent_state=opponent_state
+                dealer_state=dealer_state, player_state=player_state
             )
             action = agent.get_move(state)
             feedback = self._perform_action(action)
@@ -214,32 +204,27 @@ class Game:
                 self._reload()
         return self._winner
 
-    def _state_for_role(self, role: GameRole):
-        return PlayerState(
-            health=self._health[role], items=self._items[role].to_dict()
-        )
-
     @property
-    def _winner(self) -> GameRole | None:
-        if self._health[GameRole.DEALER] == 0:
-            return GameRole.PLAYER
-        if self._health[GameRole.PLAYER] == 0:
-            return GameRole.DEALER
+    def _winner(self) -> Role | None:
+        if self._player_state[Role.DEALER].state.health == 0:
+            return Role.PLAYER
+        if self._player_state[Role.PLAYER].state.health == 0:
+            return Role.DEALER
 
     def _end_turn(self):
         if self._handcuff_active:
             self._handcuff_active = False
             return
-        if self._current_actor == GameRole.PLAYER:
-            self._current_actor = GameRole.DEALER
+        if self._current_role == Role.PLAYER:
+            self._current_role = Role.DEALER
         else:
-            self._current_actor = GameRole.PLAYER
+            self._current_role = Role.PLAYER
 
 
 def main():
     """Run a game of Buckshot Roulette between the random agent and a human."""
-    dealer = RandomAgent()
-    player = TextAgent()
+    dealer = RandomAgent(Role.DEALER)
+    player = TextAgent(Role.PLAYER)
     game = Game(dealer, player, 4)
     winner = game.run()
     print(f"The winner is {winner}")

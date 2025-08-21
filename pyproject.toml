@@ -27,6 +27,9 @@ dependencies = []
 # Set the maximum line length to 79.
 line-length = 79
 
+[tool.ruff.lint.isort]
+known-first-party=["zerosumfc"]
+
 [tool.ruff.lint]
 select = [
     "ASYNC", # flake8-async: check for async/await syntax

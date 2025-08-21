@@ -1,7 +1,7 @@
-from zerosumfc.data import GameRole
+from zerosumfc.data import Role
 
 
 def test_role_opponent():
-    assert GameRole.DEALER != GameRole.PLAYER
-    assert GameRole.DEALER.oponent == GameRole.PLAYER
-    assert GameRole.PLAYER.oponent == GameRole.DEALER
+    assert Role.DEALER != Role.PLAYER
+    assert Role.DEALER.oponent == Role.PLAYER
+    assert Role.PLAYER.oponent == Role.DEALER

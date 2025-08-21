@@ -8,7 +8,7 @@ from zerosumfc.data import (
     GameState,
     Hit,
     Item,
-    RelativeRole,
+    Role,
     Shoot,
     Use,
 )
@@ -17,10 +17,16 @@ from zerosumfc.data import (
 class TextAgent(Agent):
     """Prints game info to a stream and queries the user for their move."""
 
+    def __init__(self, role: Role):
+        """Initialise the agent for the given role."""
+        super().__init__(role)
+        self._parser = ActionParser(role)
+
     def reset_shells(self, live: int, blank: int):
         """Print out the number of shells that have been loaded."""
         print(
-            f"The gun has been loaded with {live} live rounds and {blank} blanks."
+            f"The gun has been loaded with {live} live rounds and {blank} "
+            "blanks."
         )
 
     def get_move(self, state: GameState) -> Action:
@@ -28,7 +34,7 @@ class TextAgent(Agent):
         self._print_state(state)
         while True:
             command = input("What do you want to do?\n")
-            match parse_action(command):
+            match self._parser(command):
                 case ParseFailure(message):
                     print(f"Failed to parse command. {message}")
                 case action:
@@ -37,10 +43,11 @@ class TextAgent(Agent):
     def receive_feedback(self, feedback: Feedback | None):
         """Print out the feedback if it is not None."""
         match feedback:
-            case Hit(RelativeRole.SELF):
-                print("You shot yourself!")
-            case Hit(RelativeRole.OPPONENT):
-                print("You score a hit!")
+            case Hit(target):
+                if target == self.role:
+                    print("You shot yourself!")
+                else:
+                    print("You score a hit!")
             case None:
                 print("Nothing happened")
             case _:
@@ -54,29 +61,29 @@ class TextAgent(Agent):
             case Use(item):
                 print(f"used a {item.name.lower()}")
             case Shoot(target):
-                target_name = (
-                    "themself" if target == RelativeRole.SELF else "you"
-                )
+                target_name = "themself" if target == self.role else "you"
                 print(f"aims at {target_name} and pulls the trigger.")
         match result:
-            case Hit(RelativeRole.SELF):
-                print("They shot themself!")
-            case Hit(RelativeRole.OPPONENT):
-                print("You've been shot!")
+            case Hit(target):
+                if target == self.role:
+                    print("You've been shot!")
+                else:
+                    print("They shot themself!")
             case None:
                 print("Nothing happens")
             case _:
                 print(result)
         print()
 
-    @classmethod
-    def _print_state(cls, state: GameState):
-        print(f"Your health: {state.personal_state.health}")
-        print(f"Opponent's health: {state.opponent_state.health}")
+    def _print_state(self, state: GameState):
+        personal_state = state[self._role]
+        opponent_state = state[self._role.oponent]
+        print(f"Your health: {personal_state.health}")
+        print(f"Opponent's health: {opponent_state.health}")
         print("Your items:")
-        cls._print_items(state.personal_state.items)
+        self._print_items(personal_state.inventory)
         print("Your opponent's items")
-        cls._print_items(state.opponent_state.items)
+        self._print_items(opponent_state.inventory)
 
     @staticmethod
     def _print_items(items: dict[Item, int]):
@@ -91,42 +98,62 @@ class TextAgent(Agent):
 
 @dataclass
 class ParseFailure:
+    """If parsing has failed this will explain the reason."""
+
     message: str
 
 
-def parse_action(input: str) -> Action | ParseFailure:
-    input = input.strip().upper()
-    words = input.split()
-    if len(words) != 2:
-        return ParseFailure("Wrong number of words")
+class ActionParser:
+    """A simple parser to recognise actions.
 
-    action, subject = words
+    This parser is capable of telling which role (DEALER|PLAYER) the user is
+    talking about when they use relative terms like "me" or "opponent"
+    """
 
-    match action:
-        case "USE":
-            return parse_item(subject)
-        case "SHOOT":
-            return parse_shoot(subject)
-        case _:
-            return ParseFailure(f"Unknown action '{action}'")
+    def __init__(self, me: Role):
+        """Initialise for the given role.
 
+        This class needs to know what role is being played so that it can
+        handle relative naming.
+        """
+        self._me = me
 
-def parse_item(item_name: str) -> Use | ParseFailure:
-    try:
-        return Use(Item[item_name])
-    except KeyError:
-        return ParseFailure(f"Unknown item '{item_name}'")
+    def __call__(self, input: str) -> Action | ParseFailure:
+        """Attempt to parse the input using any of the availabel rules."""
+        input = input.strip().upper()
+        action = self.parse_item(input)
+        if action is not None:
+            return action
+        action = self.parse_shoot(input)
+        if action is not None:
+            return action
 
+        return ParseFailure("Unrecognised action.")
 
-def parse_shoot(target_name: str) -> Shoot | ParseFailure:
-    try:
-        return Shoot(RelativeRole[target_name])
-    except KeyError:
-        return ParseFailure(f"Unknown target '{target_name}'")
+    def parse_item(self, text: str) -> Use | ParseFailure | None:
+        """Attempt to parse the line as a USE action."""
+        prefix = "USE"
+        if not text.startswith(prefix):
+            return None
+        item = text.removeprefix(prefix).strip()
+        try:
+            return Use(Item[item])
+        except KeyError:
+            return ParseFailure(f"Unknown item '{item}'")
 
-
-def test_parse_action():
-    assert type(parse_action("shoot")) is ParseFailure
-    assert type(parse_action("use glass again")) is ParseFailure
-    assert parse_action("shoot oponent") == Shoot(RelativeRole.OPPONENT)
-    assert parse_action("use glass") == Use(Item.GLASS)
+    def parse_shoot(self, text: str) -> Shoot | ParseFailure | None:
+        """Attempt to parse the line as a SHOOT action."""
+        prefix = "SHOOT"
+        if not text.startswith(prefix):
+            return None
+        match text.removeprefix(prefix).strip():
+            case "DEALER":
+                return Shoot(Role.DEALER)
+            case "PLAYER":
+                return Shoot(Role.PLAYER)
+            case "ME" | "MYSELF" | "SELF":
+                return Shoot(self._me)
+            case "OPPONENT" | "OTHER":
+                return Shoot(self._me.oponent)
+            case target:
+                return ParseFailure(f"Unknown target '{target}'")

@@ -1,10 +1,12 @@
+"""Data classes used by the game and the agents to communicate."""
+
 from abc import ABC
 from dataclasses import dataclass
 from enum import Enum, auto, unique
 
 
 @unique
-class GameRole(Enum):
+class Role(Enum):
     """Which role are we talking about from the game's perspective."""
 
     PLAYER = auto()
@@ -13,17 +15,9 @@ class GameRole(Enum):
     @property
     def oponent(self):
         """The actor's oponent's role."""
-        if self == GameRole.PLAYER:
-            return GameRole.DEALER
-        return GameRole.PLAYER
-
-
-@unique
-class RelativeRole(Enum):
-    """Which role are we talking about from the players' perspectives."""
-
-    SELF = auto()
-    OPPONENT = auto()
+        if self == Role.PLAYER:
+            return Role.DEALER
+        return Role.PLAYER
 
 
 @unique
@@ -58,7 +52,7 @@ class Action(ABC):
 class Shoot(Action):
     """Indicates who the agent wants to shoot."""
 
-    target: RelativeRole
+    target: Role
 
 
 @dataclass(frozen=True)
@@ -68,7 +62,7 @@ class Use(Action):
     item: Item
 
 
-@dataclass
+@dataclass(frozen=True)
 class PlayerState:
     """The player's health and item counts.
 
@@ -79,7 +73,7 @@ class PlayerState:
     """
 
     health: int
-    items: dict[Item, int]
+    inventory: dict[Item, int]
 
 
 @dataclass
@@ -91,8 +85,14 @@ class GameState:
     player.
     """
 
-    personal_state: PlayerState
-    opponent_state: PlayerState
+    dealer_state: PlayerState
+    player_state: PlayerState
+
+    def __getitem__(self, role: Role) -> PlayerState:  # noqa: D105
+        if role == Role.DEALER:
+            return self.dealer_state
+        if role == Role.PLAYER:
+            return self.player_state
 
 
 class Feedback(ABC):
@@ -101,14 +101,14 @@ class Feedback(ABC):
     pass
 
 
-@dataclass
+@dataclass(frozen=True)
 class Hit(Feedback):
     """Tell the agent they scored a hit."""
 
-    target: RelativeRole
+    target: Role
 
 
-@dataclass
+@dataclass(frozen=True)
 class SeeShell(Feedback):
     """Tell the agent what color shell they have just seen.
 

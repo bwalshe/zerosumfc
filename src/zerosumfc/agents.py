@@ -3,7 +3,7 @@
 import random
 from abc import ABC, abstractmethod
 
-from .data import Action, Feedback, GameState, RelativeRole, Shoot, Use
+from .data import Action, Feedback, GameState, Role, Shoot, Use
 
 
 class Agent(ABC):
@@ -12,6 +12,15 @@ class Agent(ABC):
     The primary function of this agent is to implement the `get_move` method
     which selects a move based on the visible state of the game.
     """
+
+    def __init__(self, role: Role):
+        """Set the role which this agent is acting as."""
+        self._role = role
+
+    @property
+    def role(self):
+        """The role this agent is playing in the game."""
+        return self._role
 
     @abstractmethod
     def reset_shells(self, live: int, blank: int) -> None:
@@ -53,10 +62,11 @@ class RandomAgent(Agent):
     def get_move(self, state: GameState) -> Action:
         """Pick a move at random based on what is currently possible."""
         actions: list[Action] = [
-            Shoot(RelativeRole.OPPONENT),
-            Shoot(RelativeRole.SELF),
+            Shoot(Role.DEALER),
+            Shoot(Role.PLAYER),
         ]
-        for item, count in state.personal_state.items.items():
+
+        for item, count in state[self.role].inventory.items():
             if count > 0:
                 actions.append(Use(item))
         return random.choice(actions)
@@ -68,5 +78,3 @@ class RandomAgent(Agent):
     def opponent_move(self, action: Action, result: Feedback | None) -> None:
         """Ignored."""
         pass
-
-
