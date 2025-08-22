@@ -154,7 +154,7 @@ class Game:
             damage = 2 if self._saw_active else 1
             target_state.damage(damage)
         self._saw_active = False
-        if target == self._current_role or shell == Shell.LIVE:
+        if target != self._current_role or shell == Shell.LIVE:
             self._end_turn()
         if shell == Shell.LIVE:
             return Hit(target)

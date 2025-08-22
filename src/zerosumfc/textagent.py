@@ -61,7 +61,7 @@ class TextAgent(Agent):
             case Use(item):
                 print(f"used a {item.name.lower()}")
             case Shoot(target):
-                target_name = "themself" if target == self.role else "you"
+                target_name = "you" if target == self.role else "themself"
                 print(f"aims at {target_name} and pulls the trigger.")
         match result:
             case Hit(target):
