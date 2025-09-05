@@ -3,7 +3,7 @@
 import random
 from abc import ABC, abstractmethod
 
-from .data import Action, Feedback, GameState, Role, Shoot, Use
+from .data import Action, Feedback, GameState, Role, Shell, Shoot, Use
 
 
 class Agent(ABC):
@@ -71,10 +71,10 @@ class RandomAgent(Agent):
                 actions.append(Use(item))
         return random.choice(actions)
 
-    def receive_feedback(self, feedback: Feedback | None):
+    def receive_feedback(self, feedback: Shell | None):
         """Ignored."""
         pass
 
-    def opponent_move(self, action: Action, result: Feedback | None) -> None:
+    def opponent_move(self, action: Action, result: Shell | None) -> None:
         """Ignored."""
         pass

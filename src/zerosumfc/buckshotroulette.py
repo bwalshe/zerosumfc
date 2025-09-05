@@ -2,22 +2,34 @@
 
 import random
 from collections.abc import Sequence
+from copy import copy, replace
+from dataclasses import dataclass
+from types import MappingProxyType
 
 from zerosumfc.agents import Agent, RandomAgent
 from zerosumfc.data import (
     Action,
     Feedback,
     GameState,
+    Heal,
     Hit,
     Item,
+    Miss,
     PlayerState,
     Role,
-    SeeShell,
+    See,
     Shell,
     Shoot,
     Use,
+    Used,
 )
 from zerosumfc.textagent import TextAgent
+
+
+@dataclass
+class FullGameState:
+    visible_state: GameState
+    shells: list[Shell]
 
 
 class PlayerStateManager:
@@ -31,97 +43,175 @@ class PlayerStateManager:
 
     def __init__(self, max_health: int):
         """Initialise with max health and no items."""
-        self._health = max_health
         self._max_health = max_health
 
-        self._inventory = dict()
+    def new(self) -> PlayerState:
+        return PlayerState(
+            health=self._max_health, inventory=MappingProxyType(dict())
+        )
 
-    def damage(self, amount: int) -> None:
+    def damage(self, state: PlayerState, amount: int) -> PlayerState:
         """Reduce health bracketed above 0."""
-        self._health = max(0, self._health - amount)
+        new_health = max(0, state.health - amount)
+        return replace(state, health=new_health)
 
-    def heal(self, amount: int) -> None:
+    def heal(self, state: PlayerState, amount: int) -> PlayerState:
         """Increase health, bracketed to stay <= max_health."""
-        self._health = min(self._max_health, self._health + amount)
+        new_health = min(self._max_health, state.health + amount)
+        return replace(state, health=new_health)
 
-    @property
-    def item_count(self):
-        """The total number of items in the player's inventory."""
-        return sum(self._inventory.values())
-
-    def add_item(self, item: Item):
+    @classmethod
+    def add_item(cls, state: PlayerState, item: Item) -> PlayerState:
         """Add this item to the players inventory if it is not already full.
 
         The maximum number of items is controlled by
         PlayerStateManager.MAX_ITEMS.
         """
-        if self.item_count < PlayerStateManager.MAX_ITEMS:
-            self._inventory[item] = self._inventory.get(item, 0) + 1
-
-    def add_all(self, items: Sequence[Item]):
-        """Add multiple items to the inventory."""
-        for item in items:
-            self.add_item(item)
-
-    def is_available(self, item: Item) -> bool:
-        """Return true if the player have the item in their inventory."""
-        return self._inventory.get(item, 0) > 0
-
-    def use_item(self, item: Item) -> bool:
-        """If the item count is greater than 0, use up the item."""
-        if self.is_available(item):
-            self._inventory[item] -= 1
-            return True
-        return False
-
-    @property
-    def state(self):
-        """Get the publicly visible player state."""
-        return PlayerState(
-            health=self._health, inventory=dict(self._inventory)
-        )
-
-
-class Shotgun:
-    """Keeps track of the randomized shells in the game."""
-
-    def __init__(self, num_live: int, num_blank):
-        """Initialise the shotgun with the specified number of shells.
-
-        Just specify the number of shells, the order is randomised.
-        """
-        self._live = num_live
-        self._blanks = num_blank
-        self._shells = [Shell.LIVE] * self._live + [Shell.BLANK] * self._blanks
-        random.shuffle(self._shells)
-        self._next_shell = None
-
-    @property
-    def initial_load(self) -> tuple[int, int]:
-        """Get the number of shells that were initailly loaded in the gun."""
-        return (self._live, self._blanks)
-
-    @property
-    def empty(self):
-        """Is this gun empty."""
-        return not self._shells
-
-    def peek(self) -> Shell | None:
-        """Check what kind of shell is currently chambered."""
-        if self._shells:
-            return self._shells[-1]
-
-    def pop(self) -> Shell | None:
-        """Fire/Eject the chambered shell."""
-        if self._shells:
-            return self._shells.pop()
+        new_inventory = dict(state.inventory)
+        item_count = sum(state.inventory.values())
+        if item_count < cls.MAX_ITEMS:
+            new_inventory[item] = new_inventory.get(item, 0) + 1
+        return replace(state, inventory=MappingProxyType(new_inventory))
 
     @classmethod
-    def random(cls, max_shells=4):
-        """Initialise a shotgun with a randomised number of shells."""
+    def add_all(cls, state: PlayerState, items: Sequence[Item]) -> PlayerState:
+        """Add multiple items to the inventory."""
+        new_state = copy(state)
+        for item in items:
+            new_state = cls.add_item(new_state, item)
+        return new_state
+
+    @staticmethod
+    def is_available(state: PlayerState, item: Item) -> bool:
+        """Return true if the player have the item in their inventory."""
+        return state.inventory.get(item, 0) > 0
+
+    @classmethod
+    def take_item(
+        cls, state: PlayerState, item: Item
+    ) -> tuple[bool, PlayerState]:
+        """If the item count is greater than 0, use up the item."""
+        if cls.is_available(state, item):
+            new_inventory = dict(state.inventory)
+            new_inventory[item] -= 1
+            return True, replace(state, inventory=new_inventory)
+        return False, state
+
+
+class GameStateManager:
+    def __init__(self, initial_health: int):
+        self._player_state_manager = PlayerStateManager(initial_health)
+
+    def new(self) -> FullGameState:
+        visible_state = GameState(
+            dealer_state=self._player_state_manager.new(),
+            player_state=self._player_state_manager.new(),
+            current_player=Role.PLAYER,
+            saw_active=False,
+            handcuffs_active=False,
+        )
+        return FullGameState(visible_state=visible_state, shells=[])
+
+    def use_item(
+        self, state: FullGameState, item: Item
+    ) -> tuple[Feedback | None, FullGameState]:
+        current_player = state.visible_state.current_player
+        player_state = state.visible_state[current_player]
+        taken, new_player_sate = self._player_state_manager.take_item(
+            player_state, item
+        )
+        state = self._replace_player(state, current_player, new_player_sate)
+        if taken:
+            match item:
+                case Item.GLASS:
+                    shell = self.peek_shell(state)
+                    if shell is not None:
+                        return See(shell), state
+                case Item.BEER:
+                    shell, state = self.pop_shell(state)
+                    if shell is not None:
+                        return See(shell), state
+                case Item.CIGARETTES:
+                    player_state = replace(
+                        player_state, health=player_state.health + 1
+                    )
+                    state = self._replace_player(
+                        state, current_player, player_state
+                    )
+                    return Heal(1), state
+                case Item.SAW:
+                    return Used(item), self._replace_visible(
+                        state, saw_active=True
+                    )
+                case Item.HANDCUFFS:
+                    return Used(item), self._replace_visible(
+                        state, handcuffs_active=True
+                    )
+        return None, state
+
+    def shoot(
+        self, state: FullGameState, target: Role
+    ) -> tuple[Feedback, FullGameState]:
+        shell, state = self.pop_shell(state)
+        target_state = state.visible_state[target]
+        damage = 2 if state.visible_state.saw_active else 1
+        handcuff = state.visible_state.handcuffs_active
+        state = self._replace_visible(state, handcuffs_active=False)
+        current_player = state.visible_state.current_player
+        if shell == Shell.LIVE:
+            next_player = (
+                current_player if handcuff else current_player.opponent
+            )
+            target_state = replace(
+                target_state, health=target_state.health - damage
+            )
+            state = self._replace_player(state, target, target_state)
+            state = self._replace_visible(state, current_player=next_player)
+            return Hit(target), state
+        else:
+            next_player = (
+                current_player
+                if target == current_player or handcuff
+                else current_player.opponent
+            )
+            state = self._replace_visible(state, current_player=next_player)
+            return Miss(), state
+
+    @classmethod
+    def reload(
+        cls, state: FullGameState, max_shells=4
+    ) -> tuple[tuple[int, int], FullGameState]:
         live = random.randint(1, max_shells)
         blank = random.randint(1, max_shells)
-        return cls(live, blank)
+        shells = [Shell.LIVE] * live + [Shell.BLANK] * blank
+        random.shuffle(shells)
+        state = replace(state, shells=shells)
+        state = cls._replace_visible(state, current_player=Role.PLAYER)
+        return (live, blank), state
+
+    @staticmethod
+    def peek_shell(state: FullGameState) -> Shell:
+        return state.shells[-1]
+
+    @staticmethod
+    def pop_shell(state: FullGameState) -> tuple[Shell, FullGameState]:
+        shells = copy(state.shells)
+        shell = shells.pop()
+        return shell, replace(state, shells=shells)
+
+    @staticmethod
+    def _replace_visible(state: FullGameState, **kwargs) -> FullGameState:
+        new_visible_state = replace(state.visible_state, **kwargs)
+        return replace(state, visible_state=new_visible_state)
+
+    @classmethod
+    def _replace_player(
+        cls, state: FullGameState, role: Role, player_state: PlayerState
+    ) -> FullGameState:
+        if role == Role.DEALER:
+            return cls._replace_visible(state, dealer_state=player_state)
+        else:
+            return cls._replace_visible(state, player_state=player_state)
 
 
 class Game:
@@ -130,95 +220,48 @@ class Game:
     def __init__(self, dealer: Agent, player: Agent, initial_health: int):
         """Initailise a game with two agents and set their initial health."""
         self._agents = {Role.DEALER: dealer, Role.PLAYER: player}
-        self._player_state = {
-            Role.DEALER: PlayerStateManager(initial_health),
-            Role.PLAYER: PlayerStateManager(initial_health),
-        }
-        self._current_role = Role.PLAYER
-        self._handcuff_active = False
-        self._saw_active = False
-        self._reload()
-
-    def _reload(self):
-        self._shotgun = Shotgun.random()
-        for role, agent in self._agents.items():
-            agent.reset_shells(*self._shotgun.initial_load)
-            new_items = [random.choice(list(Item)) for _ in range(3)]
-            self._player_state[role].add_all(new_items)
-        self._current_role = Role.PLAYER
-
-    def _shoot(self, target: Role) -> Feedback | None:
-        shell = self._shotgun.pop()
-        target_state = self._player_state[target]
-        if shell == Shell.LIVE:
-            damage = 2 if self._saw_active else 1
-            target_state.damage(damage)
-        self._saw_active = False
-        if target != self._current_role or shell == Shell.LIVE:
-            self._end_turn()
-        if shell == Shell.LIVE:
-            return Hit(target)
-
-    def _use_item(self, item: Item) -> Feedback | None:
-        state_manager = self._player_state[self._current_role]
-        if state_manager.use_item(item):
-            match item:
-                case Item.GLASS:
-                    shell = self._shotgun.peek()
-                    if shell is not None:
-                        return SeeShell(shell)
-                case Item.BEER:
-                    shell = self._shotgun.pop()
-                    if shell is not None:
-                        return SeeShell(shell)
-                case Item.CIGARETTES:
-                    state_manager.heal(1)
-                case Item.SAW:
-                    self._saw_active = True
-                case Item.HANDCUFFS:
-                    self._handcuff_active = True
+        self._state_manager = GameStateManager(initial_health)
+        self._state = self._state_manager.new()
 
     def _perform_action(self, action: Action) -> Feedback | None:
         match action:
             case Shoot(target):
-                return self._shoot(target)
+                result, self._state = self._state_manager.shoot(
+                    self._state, target
+                )
+                return result
+
             case Use(item):
-                return self._use_item(item)
+                result, self._state = self._state_manager.use_item(
+                    self._state, item
+                )
+                return result
 
     def run(self) -> Role:
         """Start the game and continue until we have a winner."""
         while self._winner is None:
-            actor = self._current_role
-            opponent = actor.oponent
-            agent = self._agents[actor]
-            dealer_state = self._player_state[Role.DEALER].state
-            player_state = self._player_state[Role.PLAYER].state
-            state = GameState(
-                dealer_state=dealer_state, player_state=player_state
-            )
-            action = agent.get_move(state)
-            feedback = self._perform_action(action)
-            agent.receive_feedback(feedback)
-            self._agents[opponent].opponent_move(action, feedback)
-            if self._shotgun.empty:
+            if not self._state.shells:
                 self._reload()
+            current_player = self._state.visible_state.current_player
+            shooter = self._agents[current_player]
+            opponent = self._agents[current_player.opponent]
+            action = shooter.get_move(self._state.visible_state)
+            feedback = self._perform_action(action)
+            shooter.receive_feedback(feedback)
+            opponent.opponent_move(action, feedback)
         return self._winner
+
+    def _reload(self):
+        counts, self._state = self._state_manager.reload(self._state)
+        for agent in self._agents.values():
+            agent.reset_shells(*counts)
 
     @property
     def _winner(self) -> Role | None:
-        if self._player_state[Role.DEALER].state.health == 0:
+        if self._state.visible_state.dealer_state.health == 0:
             return Role.PLAYER
-        if self._player_state[Role.PLAYER].state.health == 0:
+        if self._state.visible_state.player_state.health == 0:
             return Role.DEALER
-
-    def _end_turn(self):
-        if self._handcuff_active:
-            self._handcuff_active = False
-            return
-        if self._current_role == Role.PLAYER:
-            self._current_role = Role.DEALER
-        else:
-            self._current_role = Role.PLAYER
 
 
 def main():

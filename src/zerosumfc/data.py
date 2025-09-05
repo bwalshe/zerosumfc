@@ -3,6 +3,7 @@
 from abc import ABC
 from dataclasses import dataclass
 from enum import Enum, auto, unique
+from types import MappingProxyType
 
 
 @unique
@@ -13,8 +14,8 @@ class Role(Enum):
     DEALER = auto()
 
     @property
-    def oponent(self):
-        """The actor's oponent's role."""
+    def opponent(self):
+        """The actor's opponent's role."""
         if self == Role.PLAYER:
             return Role.DEALER
         return Role.PLAYER
@@ -73,10 +74,11 @@ class PlayerState:
     """
 
     health: int
-    inventory: dict[Item, int]
+    inventory: MappingProxyType[Item, int]
 
 
-@dataclass
+
+@dataclass(frozen=True)
 class GameState:
     """The information that is provided to an agent before they make a move.
 
@@ -87,6 +89,9 @@ class GameState:
 
     dealer_state: PlayerState
     player_state: PlayerState
+    current_player: Role
+    saw_active: bool
+    handcuffs_active: bool
 
     def __getitem__(self, role: Role) -> PlayerState:  # noqa: D105
         if role == Role.DEALER:
@@ -101,15 +106,19 @@ class Feedback(ABC):
     pass
 
 
-@dataclass(frozen=True)
+@dataclass
 class Hit(Feedback):
     """Tell the agent they scored a hit."""
-
     target: Role
 
 
+@dataclass
+class Miss(Feedback):
+    pass
+
+
 @dataclass(frozen=True)
-class SeeShell(Feedback):
+class See(Feedback):
     """Tell the agent what color shell they have just seen.
 
     This could be a chambered shell, or one that has just been ejected. It is
@@ -117,3 +126,11 @@ class SeeShell(Feedback):
     """
 
     shell: Shell
+
+@dataclass(frozen=True)
+class Heal(Feedback):
+    amount: int
+
+@dataclass
+class Used(Feedback):
+    item: Item
