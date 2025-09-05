@@ -32,7 +32,7 @@ def test_parse_shoot_relaive():
         for word in ["ME", "MYSELF", "SELF"]:
             assert parser.parse_shoot(f"SHOOT {word}") == Shoot(role)
         for word in ["OPPONENT", "OTHER"]:
-            assert parser.parse_shoot(f"SHOOT {word}") == Shoot(role.oponent)
+            assert parser.parse_shoot(f"SHOOT {word}") == Shoot(role.opponent)
 
 
 def test_parse_action():

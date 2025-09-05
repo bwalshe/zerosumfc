@@ -2,13 +2,17 @@
 
 from dataclasses import dataclass
 
-from zerosumfc.agents import Agent, Feedback
+from zerosumfc.agents import Agent 
 from zerosumfc.data import (
     Action,
+    Feedback,
     GameState,
+    Heal,
     Hit,
     Item,
+    Miss,
     Role,
+    See,
     Shoot,
     Use,
 )
@@ -21,6 +25,7 @@ class TextAgent(Agent):
         """Initialise the agent for the given role."""
         super().__init__(role)
         self._parser = ActionParser(role)
+        self._last_target = None
 
     def reset_shells(self, live: int, blank: int):
         """Print out the number of shells that have been loaded."""
@@ -48,10 +53,16 @@ class TextAgent(Agent):
                     print("You shot yourself!")
                 else:
                     print("You score a hit!")
-            case None:
-                print("Nothing happened")
+            case Miss():
+                print("You pull the trigger... nothing happened.")
+            case Use(item):
+                print(f"You used a f{item.name}")
+            case Heal(amount):
+                print(f"You healed {amount} point(s)")
+            case See(shell):
+                print(f"You see a {shell.name} shell")
             case _:
-                print(feedback)
+                print("You can't do that.")
         print()
 
     def opponent_move(self, action: Action, result: Feedback | None) -> None:
@@ -77,7 +88,7 @@ class TextAgent(Agent):
 
     def _print_state(self, state: GameState):
         personal_state = state[self._role]
-        opponent_state = state[self._role.oponent]
+        opponent_state = state[self._role.opponent]
         print(f"Your health: {personal_state.health}")
         print(f"Opponent's health: {opponent_state.health}")
         print("Your items:")
@@ -154,6 +165,6 @@ class ActionParser:
             case "ME" | "MYSELF" | "SELF":
                 return Shoot(self._me)
             case "OPPONENT" | "OTHER":
-                return Shoot(self._me.oponent)
+                return Shoot(self._me.opponent)
             case target:
                 return ParseFailure(f"Unknown target '{target}'")
