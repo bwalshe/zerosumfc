@@ -1,5 +1,6 @@
 """Simulates a game of Buckshot Roulette."""
 
+import logging
 import random
 from collections.abc import Sequence
 from copy import copy, replace
@@ -24,6 +25,9 @@ from zerosumfc.data import (
     Used,
 )
 from zerosumfc.textagent import TextAgent
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -116,6 +120,7 @@ class GameStateManager:
         self, state: FullGameState, item: Item
     ) -> tuple[Feedback | None, FullGameState]:
         current_player = state.visible_state.current_player
+        logger.info("%s wants to use %s", current_player, item)
         player_state = state.visible_state[current_player]
         taken, new_player_sate = self._player_state_manager.take_item(
             player_state, item
@@ -126,10 +131,12 @@ class GameStateManager:
                 case Item.GLASS:
                     shell = self.peek_shell(state)
                     if shell is not None:
+                        logging.info("%s seen", shell)
                         return See(shell), state
                 case Item.BEER:
                     shell, state = self.pop_shell(state)
                     if shell is not None:
+                        logging.info("%s seen", shell)
                         return See(shell), state
                 case Item.CIGARETTES:
                     player_state = replace(
@@ -147,11 +154,14 @@ class GameStateManager:
                     return Used(item), self._replace_visible(
                         state, handcuffs_active=True
                     )
+        else:
+            logging.info("No %s in %s inventory", item, current_player)
         return None, state
 
     def shoot(
         self, state: FullGameState, target: Role
     ) -> tuple[Feedback, FullGameState]:
+        logger.info("%s shoots %s", state.visible_state.current_player, target)
         shell, state = self.pop_shell(state)
         target_state = state.visible_state[target]
         damage = 2 if state.visible_state.saw_active else 1
@@ -159,6 +169,7 @@ class GameStateManager:
         state = self._replace_visible(state, handcuffs_active=False)
         current_player = state.visible_state.current_player
         if shell == Shell.LIVE:
+            logger.info("It's a hit!")
             next_player = (
                 current_player if handcuff else current_player.opponent
             )
@@ -169,6 +180,7 @@ class GameStateManager:
             state = self._replace_visible(state, current_player=next_player)
             return Hit(target), state
         else:
+            logger.info("It was a blank shell.")
             next_player = (
                 current_player
                 if target == current_player or handcuff
@@ -183,6 +195,7 @@ class GameStateManager:
     ) -> tuple[tuple[int, int], FullGameState]:
         live = random.randint(1, max_shells)
         blank = random.randint(1, max_shells)
+        logger.info("Reloading with %d live shells and %d blanks", live, blank)
         shells = [Shell.LIVE] * live + [Shell.BLANK] * blank
         random.shuffle(shells)
         state = replace(state, shells=shells)
@@ -239,6 +252,7 @@ class Game:
 
     def run(self) -> Role:
         """Start the game and continue until we have a winner."""
+        logging.info(self._state)
         while self._winner is None:
             if not self._state.shells:
                 self._reload()
@@ -247,6 +261,7 @@ class Game:
             opponent = self._agents[current_player.opponent]
             action = shooter.get_move(self._state.visible_state)
             feedback = self._perform_action(action)
+            logging.info(self._state)
             shooter.receive_feedback(feedback)
             opponent.opponent_move(action, feedback)
         return self._winner
@@ -266,11 +281,16 @@ class Game:
 
 def main():
     """Run a game of Buckshot Roulette between the random agent and a human."""
+    logging.basicConfig(
+        filename="buckshot.log", encoding="utf-8", level=logging.INFO
+    )
     dealer = RandomAgent(Role.DEALER)
     player = TextAgent(Role.PLAYER)
     game = Game(dealer, player, 4)
     winner = game.run()
-    print(f"The winner is {winner}")
+    message = f"The winner is {winner}"
+    print(message)
+    logger.info(message)
 
 
 if __name__ == "__main__":
