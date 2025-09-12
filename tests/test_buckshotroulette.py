@@ -1,109 +1,19 @@
-from copy import copy, replace
+from dataclasses import replace
 import pytest
-from types import MappingProxyType
 
 from zerosumfc.buckshotroulette import (
-    PlayerStateManager,
-    FullGameState,
-    GameStateManager,
+    FullGameState
 )
 from zerosumfc.data import (
     Heal,
     Hit,
     Item,
     Miss,
-    PlayerState,
     Role,
     See,
     Shell,
     Used,
 )
-
-
-def test_player_state_manager_init():
-    initial_health = 5
-    manager = PlayerStateManager(initial_health)
-    state = manager.new()
-    assert state.health == initial_health
-
-    assert state.inventory == dict()
-
-
-def test_player_state_manager_immutable():
-    manager = PlayerStateManager(2)
-    item = Item.GLASS
-    original_state = manager.new()
-    assert item not in original_state.inventory
-    new_state = manager.add_item(original_state, item)
-    assert item in new_state.inventory
-    assert item not in original_state.inventory
-    with pytest.raises(TypeError):
-        original_state.inventory[item] = 1  # type: ignore
-    with pytest.raises(TypeError):
-        new_state.inventory[item] = 1  # type: ignore
-    assert item not in original_state.inventory
-
-
-def test_player_state_health_bounds():
-    initial_health = 5
-    manager = PlayerStateManager(initial_health)
-    state = manager.new()
-    damaged = manager.damage(state, 1)
-    assert damaged.health == initial_health - 1
-    assert manager.heal(damaged, 1).health == initial_health
-    assert manager.damage(state, 100).health == 0
-    assert manager.heal(damaged, 100).health == initial_health
-
-
-def test_add_item_max_items():
-    item = Item.GLASS
-    other_item = Item.BEER
-    manager = PlayerStateManager(1)
-    state = manager.new()
-
-    for i in range(manager.MAX_ITEMS):
-        state = manager.add_item(state, item)
-        assert state.inventory[item] == i + 1
-
-    state = manager.add_item(state, other_item)
-    assert state.inventory.get(other_item, 0) == 0
-
-
-def test_item_available():
-    manager = PlayerStateManager(1)
-    item = Item.BEER
-    state = manager.new()
-    assert not manager.is_available(state, item)
-    state = manager.add_item(state, item)
-    assert manager.is_available(state, item)
-
-
-def test_take_item():
-    manager = PlayerStateManager(1)
-    item = Item.BEER
-    state = manager.new()
-    taken, state = manager.take_item(state, item)
-    assert not taken
-    state = manager.add_item(state, item)
-    taken, state = manager.take_item(state, item)
-    assert taken
-    taken, state = manager.take_item(state, item)
-    assert not taken
-
-
-def test_game_state_manager_init():
-    initial_health = 5
-    manager = GameStateManager(initial_health)
-    state = manager.new()
-    visible_state = state.visible_state
-    assert visible_state.current_player == Role.PLAYER
-    assert visible_state.handcuffs_active is False
-    assert visible_state.saw_active is False
-    assert visible_state.dealer_state.health == initial_health
-    assert len(visible_state.dealer_state.inventory) == 0
-    assert visible_state.player_state.health == initial_health
-    assert len(visible_state.player_state.inventory) == 0
-    assert len(state.shells) == 0
 
 
 def set_visible_state(state: FullGameState, **kwargs):
@@ -112,78 +22,69 @@ def set_visible_state(state: FullGameState, **kwargs):
     return replace(state, visible_state=visible_state)
 
 
-def set_inventory(
-    state: FullGameState,
-    items: dict[Item, int],
-    current_player: Role,
+def game_with_inventory(
+    items: list[Item],
+    health=1,
+    current_player: Role = Role.PLAYER,
 ) -> FullGameState:
-    player_state = PlayerState(health=1, inventory=MappingProxyType(items))
-    dealer_state = copy(player_state)
-
-
-    return set_visible_state(
-        state,
-        player_state=player_state,
-        dealer_state=dealer_state,
-        current_player=current_player,
-    )
-
-
-@pytest.mark.parametrize("role", list(Role))
-def test_game_state_manager_use_item_correct_role(role):
-    item = Item.HANDCUFFS
-    initial_count = 2
-    manager = GameStateManager(1)
-    state = set_inventory(
-        manager.new(), {item: initial_count}, current_player=role
-    )
-    result, new_state = manager.use_item(state, item)
-    assert result is not None
-    assert new_state.visible_state[role].inventory[item] == initial_count - 1
-    assert (
-        new_state.visible_state[role.opponent].inventory[item] == initial_count
-    )
+    state = FullGameState.new(health)
+    visible_state = state.visible_state.add_all(items, items)
+    visible_state = replace(visible_state, current_player=current_player)
+    return replace(state, visible_state=visible_state)
 
 
 @pytest.mark.parametrize("shell", list(Shell))
 def test_game_state_manager_use_beer(shell):
     role = Role.PLAYER
-    manager = GameStateManager(1)
-    state = set_inventory(manager.new(), {Item.BEER: 1}, role)
+    beer = Item.BEER
+    state = game_with_inventory([beer], 1, role)
     state = replace(state, shells=[shell])
-    result, new_state = manager.use_item(state, Item.BEER)
+    result, new_state = state.use_item(beer)
     assert result == See(shell)
-    assert new_state.visible_state[role].inventory[Item.BEER] == 0
+    assert new_state.visible_state[role].inventory.get(beer, 0) == 0
 
 
 def test_game_state_manager_use_cigarettes():
     role = Role.PLAYER
-    start_health = 1
-    manager = GameStateManager(1)
-    state = set_inventory(manager.new(), {Item.CIGARETTES: 1}, role)
-    result, new_state = manager.use_item(state, Item.CIGARETTES)
+    cigarettes = Item.CIGARETTES
+    start_health = 10
+    state = game_with_inventory([cigarettes], start_health, role)
+    state = replace(
+        state,
+        visible_state=state.visible_state.set_player(
+            role, health=start_health - 1
+        ),
+    )
+
+    result, new_state = state.use_item(cigarettes)
     assert result == Heal(1)
-    assert new_state.visible_state[role].health == start_health + 1
+    assert (
+        new_state.visible_state[role].health
+        == state.visible_state[role].health + 1
+    )
+    assert new_state.visible_state[role].inventory.get(cigarettes, 0) == 0
 
 
 def test_game_state_manager_use_handcuffs():
     role = Role.PLAYER
-    manager = GameStateManager(1)
-    state = set_inventory(manager.new(), {Item.HANDCUFFS: 1}, role)
-    result, new_state = manager.use_item(state, Item.HANDCUFFS)
-    assert result == Used(Item.HANDCUFFS)
+    handcuffs = Item.HANDCUFFS
+    state = game_with_inventory([handcuffs], current_player=role)
+    result, new_state = state.use_item(handcuffs)
+    assert result == Used(handcuffs)
     assert new_state.visible_state.handcuffs_active
+    assert new_state.visible_state[role].inventory.get(handcuffs, 0) == 0
 
 
 @pytest.mark.parametrize("shell", list(Shell))
 def test_game_state_manager_use_glass(shell):
     role = Role.PLAYER
-    manager = GameStateManager(1)
-    state = set_inventory(manager.new(), {Item.GLASS: 1}, role)
+    glass = Item.GLASS
+    state = game_with_inventory([glass], current_player=role)
     state = replace(state, shells=[shell])
-    result, new_state = manager.use_item(state, Item.GLASS)
+    result, new_state = state.use_item(glass)
     assert result == See(shell)
     assert new_state.shells == [shell]
+    assert new_state.visible_state[role].inventory.get(glass, 0) == 0
 
 
 @pytest.mark.parametrize(
@@ -203,24 +104,23 @@ def test_game_state_manager_shoot(
     shooter, target, shell, damage, expected_result
 ):
     start_health = 10
-    manager = GameStateManager(start_health)
-    state = replace(manager.new(), shells=[shell])
+    state = replace(FullGameState.new(start_health), shells=[shell])
     visible_state = replace(state.visible_state, current_player=shooter)
     state = replace(state, visible_state=visible_state)
-    result, new_state = manager.shoot(state, target)
+    result, new_state = state.shoot(target)
     assert result == expected_result
     assert new_state.visible_state[target].health == start_health - damage
+    assert len(new_state.shells) == 0
 
 
 def test_game_state_manager_shoot_after_saw():
     start_health = 10
-    manager = GameStateManager(start_health)
-    state = manager.new()
+    state = FullGameState.new(start_health)
     visible_state = replace(state.visible_state, saw_active=True)
     state = replace(state, visible_state=visible_state, shells=[Shell.LIVE])
     shooter = state.visible_state.current_player
     target = shooter.opponent
-    _, new_state = manager.shoot(state, target)
+    _, new_state = state.shoot(target)
     assert new_state.visible_state[target].health == start_health - 2
 
 
@@ -234,17 +134,15 @@ def test_game_state_manager_shoot_after_saw():
     ],
 )
 def test_game_state_manager_next_player(target, shell, next_player):
-    manager = GameStateManager(10)
-    state = manager.new()
+    state = FullGameState.new(10)
     state = replace(state, shells=[shell] * 2)
     assert state.visible_state.current_player == Role.PLAYER
-    _, new_state = manager.shoot(state, target)
+    _, new_state = state.shoot(target)
     assert new_state.visible_state.current_player == next_player
 
 
 @pytest.mark.parametrize("role", list(Role))
 def test_game_state_manager_next_player_after_reload(role):
-    manager = GameStateManager(10)
-    state = set_visible_state(manager.new(), current_player=role)
-    _, new_state = manager.reload(state)
+    state = set_visible_state(FullGameState.new(10), current_player=role)
+    _, new_state = state.reload()
     assert new_state.visible_state.current_player == Role.PLAYER

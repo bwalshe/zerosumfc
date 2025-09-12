@@ -1,9 +1,12 @@
 """Data classes used by the game and the agents to communicate."""
 
 from abc import ABC
+from copy import copy, replace
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum, auto, unique
 from types import MappingProxyType
+from typing import ClassVar
 
 
 @unique
@@ -73,9 +76,52 @@ class PlayerState:
     themselves.
     """
 
-    health: int
-    inventory: MappingProxyType[Item, int]
+    MAX_ITEMS: ClassVar[int] = 8
 
+    health: int
+    inventory: MappingProxyType[Item, int] = MappingProxyType(dict())
+
+    def damage(self, amount: int) -> "PlayerState":
+        """Reduce health bracketed above 0."""
+        new_health = max(0, self.health - amount)
+        return replace(self, health=new_health)
+
+    def heal(self, amount: int, max_health: int) -> "PlayerState":
+        """Increase health, bracketed to stay <= max_health."""
+        new_health = min(max_health, self.health + amount)
+        return replace(self, health=new_health)
+
+    def add_item(self, item: Item) -> "PlayerState":
+        """Add this item to the players inventory if it is not already full.
+
+        The maximum number of items is controlled by
+        PlayerStateManager.MAX_ITEMS.
+        """
+        item_count = sum(self.inventory.values())
+        if item_count >= self.MAX_ITEMS:
+            return self
+        new_inventory = dict(self.inventory)
+        new_inventory[item] = new_inventory.get(item, 0) + 1
+        return replace(self, inventory=MappingProxyType(new_inventory))
+
+    def add_all(self, items: Sequence[Item]) -> "PlayerState":
+        """Add multiple items to the inventory."""
+        state = copy(self)
+        for item in items:
+            state = state.add_item(item)
+        return state
+
+    def take_item(self, item: Item) -> tuple[bool, "PlayerState"]:
+        """If the item count is greater than 0, use up the item."""
+        if item in self:
+            new_inventory = dict(self.inventory)
+            new_inventory[item] -= 1
+            return True, replace(self, inventory=new_inventory)
+        return False, self
+
+    def __contains__(self, item: Item) -> bool:
+        """Return true if the player have the item in their inventory."""
+        return self.inventory.get(item, 0) > 0
 
 
 @dataclass(frozen=True)
@@ -87,17 +133,87 @@ class GameState:
     player.
     """
 
-    dealer_state: PlayerState
     player_state: PlayerState
-    current_player: Role
-    saw_active: bool
-    handcuffs_active: bool
+    dealer_state: PlayerState
+    max_health: int
+    current_player: Role = Role.PLAYER
+    saw_active: bool = False
+    handcuffs_active: bool = False
+
+    def __post_init__(self):
+        for health in (self.player_state.health, self.dealer_state.health):
+            if health > self.max_health:
+                raise ValueError(
+                    f"health ({health}) exceeds maximum ({self.max_health}"
+                )
 
     def __getitem__(self, role: Role) -> PlayerState:  # noqa: D105
         if role == Role.DEALER:
             return self.dealer_state
         if role == Role.PLAYER:
             return self.player_state
+
+    @classmethod
+    def new(cls, max_health: int) -> "GameState":
+        return cls(
+            player_state=PlayerState(max_health),
+            dealer_state=PlayerState(max_health),
+            max_health=max_health,
+        )
+
+    def reset_modifiers(self) -> "GameState":
+        return replace(self, handcuffs_active=False, saw_active=False)
+
+    def end_turn(self) -> "GameState":
+        if self.handcuffs_active:
+            return replace(self, handcuffs_active=False)
+        return replace(self.reset_modifiers(), current_player=self.current_player.opponent)
+
+    def shoot(self, shell: Shell, target: Role) -> "GameState":
+        """Reduce health bracketed above 0."""
+        if shell == Shell.BLANK and target == self.current_player:
+            return self
+        amount = 1 if shell == Shell.LIVE else 0
+        if self.saw_active:
+            amount *= 2
+        player_state = self[target].damage(amount)
+        return (
+            self._replace_player(player_state, target)
+            .end_turn()
+        )
+
+    def heal_current_player(self, amount: int) -> "GameState":
+        """Increase health, bracketed to stay <= max_health."""
+        new_health = min(
+            self.max_health, self[self.current_player].health + amount
+        )
+        new_state = replace(self[self.current_player], health=new_health)
+        return self._replace_player(new_state, self.current_player)
+
+    def take_item(self, item: Item) -> tuple[bool, "GameState"]:
+        taken, player_state = self[self.current_player].take_item(item)
+        return taken, self._replace_player(player_state, self.current_player)
+
+    def add_all(
+        self, player_items: Sequence[Item], dealer_items: Sequence[Item]
+    ) -> "GameState":
+        player_state = self.player_state.add_all(player_items)
+        dealer_state = self.dealer_state.add_all(dealer_items)
+        return replace(
+            self, player_state=player_state, dealer_state=dealer_state
+        )
+
+    def _replace_player(
+        self, player_state: PlayerState, player: Role
+    ) -> "GameState":
+        if player == Role.DEALER:
+            return replace(self, dealer_state=player_state)
+        else:
+            return replace(self, player_state=player_state)
+
+    def set_player(self, player:Role, **kwargs):
+        new_player_state = replace(self[player], **kwargs)
+        return self._replace_player(new_player_state, player)
 
 
 class Feedback(ABC):
@@ -109,6 +225,7 @@ class Feedback(ABC):
 @dataclass
 class Hit(Feedback):
     """Tell the agent they scored a hit."""
+
     target: Role
 
 
@@ -127,9 +244,11 @@ class See(Feedback):
 
     shell: Shell
 
+
 @dataclass(frozen=True)
 class Heal(Feedback):
     amount: int
+
 
 @dataclass
 class Used(Feedback):
