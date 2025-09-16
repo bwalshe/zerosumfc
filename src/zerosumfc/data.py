@@ -161,14 +161,28 @@ class GameState:
             max_health=max_health,
         )
 
-    def damage(self, target: Role, amount: int) -> "GameState":
-        """Reduce health bracketed above 0."""
-        player_state = self[target]
-        new_health = max(0, player_state.health - amount)
-        new_state = replace(player_state, health=new_health)
-        return self._replace_player(new_state, target)
+    def reset_modifiers(self) -> "GameState":
+        return replace(self, handcuffs_active=False, saw_active=False)
 
-    def heal(self, amount: int) -> "GameState":
+    def end_turn(self) -> "GameState":
+        if self.handcuffs_active:
+            return replace(self, handcuffs_active=False)
+        return replace(self.reset_modifiers(), current_player=self.current_player.opponent)
+
+    def shoot(self, shell: Shell, target: Role) -> "GameState":
+        """Reduce health bracketed above 0."""
+        if shell == Shell.BLANK and target == self.current_player:
+            return self
+        amount = 1 if shell == Shell.LIVE else 0
+        if self.saw_active:
+            amount *= 2
+        player_state = self[target].damage(amount)
+        return (
+            self._replace_player(player_state, target)
+            .end_turn()
+        )
+
+    def heal_current_player(self, amount: int) -> "GameState":
         """Increase health, bracketed to stay <= max_health."""
         new_health = min(
             self.max_health, self[self.current_player].health + amount
@@ -189,11 +203,17 @@ class GameState:
             self, player_state=player_state, dealer_state=dealer_state
         )
 
-    def _replace_player(self, player_state: PlayerState, player:Role) -> "GameState":
+    def _replace_player(
+        self, player_state: PlayerState, player: Role
+    ) -> "GameState":
         if player == Role.DEALER:
             return replace(self, dealer_state=player_state)
         else:
             return replace(self, player_state=player_state)
+
+    def set_player(self, player:Role, **kwargs):
+        new_player_state = replace(self[player], **kwargs)
+        return self._replace_player(new_player_state, player)
 
 
 class Feedback(ABC):

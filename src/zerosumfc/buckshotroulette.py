@@ -5,7 +5,7 @@ import random
 from copy import copy, replace
 from dataclasses import dataclass
 
-from zerosumfc.agents import Agent, RandomAgent
+from zerosumfc.agents import Agent
 from zerosumfc.data import (
     Action,
     Feedback,
@@ -21,8 +21,8 @@ from zerosumfc.data import (
     Use,
     Used,
 )
+from zerosumfc.minmaxagent import MiniMaxAgent
 from zerosumfc.textagent import TextAgent
-
 
 logger = logging.getLogger(__name__)
 
@@ -47,16 +47,16 @@ class FullGameState:
                 case Item.GLASS:
                     shell = self.peek_shell()
                     if shell is not None:
-                        logging.info("%s seen", shell)
+                        logger.info("%s seen", shell)
                         return See(shell), state
                 case Item.BEER:
                     shell, state = state.pop_shell()
                     if shell is not None:
-                        logging.info("%s seen", shell)
+                        logger.info("%s seen", shell)
                         return See(shell), state
                 case Item.CIGARETTES:
                     return Heal(1), replace(
-                        state, visible_state=visible_state.heal(1)
+                        state, visible_state=visible_state.heal_current_player(1)
                     )
                 case Item.SAW:
                     return Used(item), _replace_visible(state, saw_active=True)
@@ -74,27 +74,12 @@ class FullGameState:
     ) -> tuple[Feedback, "FullGameState"]:
         logger.info("%s shoots %s", self.visible_state.current_player, target)
         shell, state = self.pop_shell()
-        damage = 2 if state.visible_state.saw_active else 1
-        handcuff = state.visible_state.handcuffs_active
-        state = _replace_visible(state, handcuffs_active=False)
-        current_player = state.visible_state.current_player
+        state = replace(state, visible_state=self.visible_state.shoot(shell, target))
         if shell == Shell.LIVE:
             logger.info("It's a hit!")
-            next_player = (
-                current_player if handcuff else current_player.opponent
-            )
-            visible_state = state.visible_state.damage(target, damage)
-            visible_state = replace(visible_state, current_player=next_player)
-            state = replace(state, visible_state=visible_state)
             return Hit(target), state
         else:
             logger.info("It was a blank shell.")
-            next_player = (
-                current_player
-                if target == current_player or handcuff
-                else current_player.opponent
-            )
-            state = _replace_visible(state, current_player=next_player)
             return Miss(), state
 
 
@@ -142,7 +127,7 @@ class Game:
 
     def run(self) -> Role:
         """Start the game and continue until we have a winner."""
-        logging.info(self._state)
+        logger.info(self._state)
         while self._winner is None:
             if not self._state.shells:
                 self._reload()
@@ -151,7 +136,7 @@ class Game:
             opponent = self._agents[current_player.opponent]
             action = shooter.get_move(self._state.visible_state)
             feedback = self._perform_action(action)
-            logging.info(self._state)
+            logger.info(self._state)
             shooter.receive_feedback(feedback)
             opponent.opponent_move(action, feedback)
         return self._winner
@@ -174,7 +159,7 @@ def main():
     logging.basicConfig(
         filename="buckshot.log", encoding="utf-8", level=logging.INFO
     )
-    dealer = RandomAgent(Role.DEALER)
+    dealer = MiniMaxAgent(Role.DEALER)
     player = TextAgent(Role.PLAYER)
     game = Game(dealer, player, 4)
     winner = game.run()

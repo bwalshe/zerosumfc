@@ -49,7 +49,12 @@ def test_game_state_manager_use_cigarettes():
     cigarettes = Item.CIGARETTES
     start_health = 10
     state = game_with_inventory([cigarettes], start_health, role)
-    state = replace(state, visible_state=state.visible_state.damage(role, 5))
+    state = replace(
+        state,
+        visible_state=state.visible_state.set_player(
+            role, health=start_health - 1
+        ),
+    )
 
     result, new_state = state.use_item(cigarettes)
     assert result == Heal(1)
