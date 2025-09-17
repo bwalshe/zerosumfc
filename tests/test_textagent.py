@@ -1,5 +1,3 @@
-# import pytest
-
 from zerosumfc.data import Item, Role, Shoot, Use
 from zerosumfc.textagent import ActionParser, ParseFailure
 

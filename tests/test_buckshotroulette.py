@@ -1,8 +1,8 @@
-from copy import copy, replace
+from dataclasses import replace
 import pytest
 
 from zerosumfc.buckshotroulette import (
-    FullGameState,
+    FullGameState
 )
 from zerosumfc.data import (
     Heal,

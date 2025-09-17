@@ -1,4 +1,4 @@
-from copy import replace
+from dataclasses import replace
 import pytest
 
 from zerosumfc.data import GameState, Item, PlayerState, Role, Shell

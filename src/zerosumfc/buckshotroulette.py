@@ -2,8 +2,8 @@
 
 import logging
 import random
-from copy import copy, replace
-from dataclasses import dataclass
+from copy import copy
+from dataclasses import dataclass, replace
 
 from zerosumfc.agents import Agent
 from zerosumfc.data import (
@@ -21,7 +21,7 @@ from zerosumfc.data import (
     Use,
     Used,
 )
-from zerosumfc.minmaxagent import MiniMaxAgent
+from zerosumfc.minmaxagent import MinMaxAgent
 from zerosumfc.textagent import TextAgent
 
 logger = logging.getLogger(__name__)
@@ -159,7 +159,7 @@ def main():
     logging.basicConfig(
         filename="buckshot.log", encoding="utf-8", level=logging.INFO
     )
-    dealer = MiniMaxAgent(Role.DEALER)
+    dealer = MinMaxAgent(Role.DEALER)
     player = TextAgent(Role.PLAYER)
     game = Game(dealer, player, 4)
     winner = game.run()

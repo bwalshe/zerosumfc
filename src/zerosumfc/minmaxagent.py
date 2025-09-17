@@ -45,44 +45,41 @@ class MinMaxState:
         return self._shell_state(live_state, blank_state)
 
     def use_beer(self) -> StateList:
-        success, new_visible_state = self.visible_state.take_item(Item.BEER)
-        if not success:
-            raise ValueError("Agent tried to use unavailalbe item")
+        new_visible_state = self._try_take(Item.BEER)
 
         live_state = MinMaxState(
-            visible_state=self.visible_state,
+            visible_state=new_visible_state,
             live_shells=self.live_shells - 1,
             blank_shells=self.blank_shells,
         )
         blank_state = MinMaxState(
-            visible_state=self.visible_state,
+            visible_state=new_visible_state,
             live_shells=self.live_shells,
             blank_shells=self.blank_shells - 1,
         )
         return self._shell_state(live_state, blank_state)
 
     def use_cigarettes(self) -> StateList:
-        success, new_visible_state = self.visible_state.take_item(
+        new_visible_state = self._try_take(
             Item.CIGARETTES
-        )
-        if not success:
-            raise ValueError("Agent tried to use unavailalbe item")
-        new_visible_state = new_visible_state.heal_current_player(1)
+        ).heal_current_player(1)
         return [StateProb(1.0, replace(self, visible_state=new_visible_state))]
 
     def use_handcuffs(self) -> StateList:
-        success, new_visible_state = self.visible_state.take_item(
-            Item.HANDCUFFS
-        )
-        if not success:
-            raise ValueError("Agent tried to use unavailalbe item")
+        new_visible_state = self._try_take(Item.HANDCUFFS)
         new_visible_state = replace(new_visible_state, handcuffs_active=True)
         return [StateProb(1.0, replace(self, visible_state=new_visible_state))]
 
     def use_glass(self) -> StateList:
-        live_state = replace(self, next_shell=Shell.LIVE)
-        blank_state = replace(self, next_shell=Shell.BLANK)
+        new_visible_state = self._try_take(Item.GLASS)
+        live_state = replace(self, next_shell=Shell.LIVE, visible_state=new_visible_state)
+        blank_state = replace(self, next_shell=Shell.BLANK, visible_state=new_visible_state)
         return self._shell_state(live_state, blank_state)
+
+    def use_saw(self) -> StateList:
+        new_visible_state = self._try_take(Item.SAW)
+        new_visible_state = replace(new_visible_state, saw_active=True)
+        return [StateProb(1.0, replace(self, visible_state=new_visible_state))]
 
     def use_item(self, item: Item) -> StateList:
         match item:
@@ -94,6 +91,8 @@ class MinMaxState:
                 return self.use_handcuffs()
             case Item.GLASS:
                 return self.use_glass()
+            case Item.SAW:
+                return self.use_saw()
             case _:
                 raise ValueError(f"item must not be {item}")
 
@@ -123,21 +122,17 @@ class MinMaxState:
             StateProb(1 - p_live, blank_state),
         ]
 
+    def _try_take(self, item: Item) -> GameState:
+        success, state = self.visible_state.take_item(item)
+        if not success:
+            raise ValueError("Agent tried to use unavailable item")
+        return state
+
 
 @dataclass(order=True)
 class MoveOption:
     p_win: float
     move: Action | None = field(compare=False)
-
-
-def prob_live(state: MinMaxState) -> float:
-    match state.next_shell:
-        case Shell.LIVE:
-            return 1
-        case Shell.BLANK:
-            return 0
-        case None:
-            return state.live_shells / (state.live_shells + state.blank_shells)
 
 
 def pick_move(state: MinMaxState) -> MoveOption:
@@ -179,7 +174,7 @@ def score_move(state: MinMaxState, move: Action) -> MoveOption:
     return MoveOption(p_win, move)
 
 
-class MiniMaxAgent(Agent):
+class MinMaxAgent(Agent):
     def __init__(self, role: Role):
         super().__init__(role)
         self.reset_shells(0, 0)
