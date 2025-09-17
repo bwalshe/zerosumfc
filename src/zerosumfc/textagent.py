@@ -1,6 +1,7 @@
 """A text based Buckshot Roulette agent."""
 
 from dataclasses import dataclass
+from types import MappingProxyType
 
 from zerosumfc.agents import Agent 
 from zerosumfc.data import (
@@ -54,7 +55,7 @@ class TextAgent(Agent):
                 else:
                     print("You score a hit!")
             case Miss():
-                print("You pull the trigger... nothing happened.")
+                print("You pull the trigger... it's a blank!.")
             case Use(item):
                 print(f"You used a f{item.name}")
             case Heal(amount):
@@ -80,6 +81,8 @@ class TextAgent(Agent):
                     print("You've been shot!")
                 else:
                     print("They shot themself!")
+            case Miss():
+                print("It was a blank.")
             case None:
                 print("Nothing happens")
             case _:
@@ -97,9 +100,9 @@ class TextAgent(Agent):
         self._print_items(opponent_state.inventory)
 
     @staticmethod
-    def _print_items(items: dict[Item, int]):
-        items = {k: v for k, v in items.items() if v > 0}
-        if len(items) == 0:
+    def _print_items(items: MappingProxyType[Item, int]):
+        total_count = sum(items.values())
+        if total_count == 0:
             print("Nothing.")
         else:
             for item, count in items.items():

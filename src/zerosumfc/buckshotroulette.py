@@ -163,9 +163,11 @@ def main():
     player = TextAgent(Role.PLAYER)
     game = Game(dealer, player, 4)
     winner = game.run()
-    message = f"The winner is {winner}"
-    print(message)
-    logger.info(message)
+    if winner == Role.PLAYER:
+        print("The dealer is dead. You have won.")
+    else:
+        print("You died. The dealer has won.")
+    logger.info("Winner: %s", winner)
 
 
 if __name__ == "__main__":
