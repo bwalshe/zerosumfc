@@ -4,6 +4,7 @@ import logging
 import random
 from copy import copy
 from dataclasses import dataclass, replace
+import random
 
 from zerosumfc.agents import Agent
 from zerosumfc.data import (
@@ -93,6 +94,14 @@ class FullGameState:
         state = _replace_visible(state, current_player=Role.PLAYER)
         return (live, blank), state
 
+    def restock(self, num_items=3) -> "FullGameState":
+        items = []
+        for _ in list(Role):
+            items.append(random.choices(list(Item), k=3))
+        visible_state = self.visible_state.add_all(*items)
+        return replace(self, visible_state=visible_state)
+
+
     def peek_shell(self) -> Shell:
         return self.shells[-1]
 
@@ -131,6 +140,7 @@ class Game:
         while self._winner is None:
             if not self._state.shells:
                 self._reload()
+                self._restock()
             current_player = self._state.visible_state.current_player
             shooter = self._agents[current_player]
             opponent = self._agents[current_player.opponent]
@@ -145,6 +155,9 @@ class Game:
         counts, self._state = self._state.reload()
         for agent in self._agents.values():
             agent.reset_shells(*counts)
+
+    def _restock(self):
+        self._state = self._state.restock()
 
     @property
     def _winner(self) -> Role | None:

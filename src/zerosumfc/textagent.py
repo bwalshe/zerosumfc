@@ -16,6 +16,7 @@ from zerosumfc.data import (
     See,
     Shoot,
     Use,
+    Used
 )
 
 
@@ -56,13 +57,14 @@ class TextAgent(Agent):
                     print("You score a hit!")
             case Miss():
                 print("You pull the trigger... it's a blank!.")
-            case Use(item):
-                print(f"You used a f{item.name}")
+            case Used(item):
+                print(f"You used the {item.name.lower()}")
             case Heal(amount):
                 print(f"You healed {amount} point(s)")
             case See(shell):
                 print(f"You see a {shell.name} shell")
             case _:
+                breakpoint()
                 print("You can't do that.")
         print()
 
