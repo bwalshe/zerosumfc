@@ -72,8 +72,12 @@ class MinMaxState:
 
     def use_glass(self) -> StateList:
         new_visible_state = self._try_take(Item.GLASS)
-        live_state = replace(self, next_shell=Shell.LIVE, visible_state=new_visible_state)
-        blank_state = replace(self, next_shell=Shell.BLANK, visible_state=new_visible_state)
+        live_state = replace(
+            self, next_shell=Shell.LIVE, visible_state=new_visible_state
+        )
+        blank_state = replace(
+            self, next_shell=Shell.BLANK, visible_state=new_visible_state
+        )
         return self._shell_state(live_state, blank_state)
 
     def use_saw(self) -> StateList:
@@ -142,7 +146,6 @@ def pick_move(state: MinMaxState) -> MoveOption:
     if visible_state.dealer_state.health == 0:
         return MoveOption(1.0, None)
 
-    moves = list_moves(state)
     if state.blank_shells == 0 and state.live_shells == 0:
         p_win = visible_state.player_state.health / (
             visible_state.player_state.health
@@ -159,12 +162,23 @@ def pick_move(state: MinMaxState) -> MoveOption:
 
 def list_moves(state: MinMaxState) -> list[Action]:
     current_player = state.visible_state.current_player
-    current_player_state = state.visible_state[current_player]
+    player_state = state.visible_state[current_player]
+    max_health = state.visible_state.max_health
+    if Item.CIGARETTES in player_state and player_state.health < max_health:
+        return [Use(Item.CIGARETTES)]
 
     moves: list[Action] = [Shoot(target) for target in list(Role)]
-    for item, count in current_player_state.inventory.items():
-        if count > 0:
-            moves.append(Use(item))
+    if Item.BEER in player_state:
+        moves.append(Use(Item.BEER))
+    if Item.GLASS in player_state and state.next_shell is None:
+        moves.append(Use(Item.GLASS))
+    if (
+        Item.HANDCUFFS in player_state
+        and not state.visible_state.handcuffs_active
+    ):
+        moves.append(Use(Item.HANDCUFFS))
+    if Item.SAW in player_state and not state.visible_state.saw_active:
+        moves.append(Use(Item.SAW))
     return moves
 
 
@@ -184,6 +198,10 @@ class MinMaxAgent(Agent):
         self._blank = blank
 
     def get_move(self, state: GameState) -> Action:
+        my_state = state[self.role]
+        if my_state.health < state.max_health and Item.CIGARETTES in my_state:
+            return Use(Item.CIGARETTES)
+
         known_state = MinMaxState(
             visible_state=state,
             live_shells=self._live,
