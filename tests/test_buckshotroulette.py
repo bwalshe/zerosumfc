@@ -41,7 +41,7 @@ def test_game_state_manager_use_beer(shell):
     state = replace(state, shells=[shell])
     result, new_state = state.use_item(beer)
     assert result == See(shell)
-    assert new_state.visible_state[role].inventory.get(beer, 0) == 0
+    assert new_state.visible_state[role][beer] == 0
 
 
 def test_game_state_manager_use_cigarettes():
@@ -62,7 +62,7 @@ def test_game_state_manager_use_cigarettes():
         new_state.visible_state[role].health
         == state.visible_state[role].health + 1
     )
-    assert new_state.visible_state[role].inventory.get(cigarettes, 0) == 0
+    assert new_state.visible_state[role][cigarettes] == 0
 
 
 def test_game_state_manager_use_handcuffs():
@@ -72,7 +72,7 @@ def test_game_state_manager_use_handcuffs():
     result, new_state = state.use_item(handcuffs)
     assert result == Used(handcuffs)
     assert new_state.visible_state.handcuffs_active
-    assert new_state.visible_state[role].inventory.get(handcuffs, 0) == 0
+    assert new_state.visible_state[role][handcuffs] == 0
 
 
 @pytest.mark.parametrize("shell", list(Shell))
@@ -84,7 +84,7 @@ def test_game_state_manager_use_glass(shell):
     result, new_state = state.use_item(glass)
     assert result == See(shell)
     assert new_state.shells == [shell]
-    assert new_state.visible_state[role].inventory.get(glass, 0) == 0
+    assert new_state.visible_state[role][glass] == 0
 
 
 @pytest.mark.parametrize(

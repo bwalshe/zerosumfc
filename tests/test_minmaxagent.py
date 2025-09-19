@@ -100,8 +100,8 @@ def test_min_max_state_item_inventory_updates(item: Item):
     new_states = state.use_item(item)
 
     for s in new_states:
-        assert s.state.visible_state[player].inventory.get(item, 0) == 0
-        assert s.state.visible_state[opponent].inventory.get(item, 0) == 1
+        assert s.state.visible_state[player][item] == 0
+        assert s.state.visible_state[opponent][item] == 1
 
 
 @pytest.mark.parametrize("item", list(Item))

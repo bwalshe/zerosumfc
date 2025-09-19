@@ -12,6 +12,7 @@ from zerosumfc.data import (
     Hit,
     Item,
     Miss,
+    PlayerState,
     Role,
     See,
     Shoot,
@@ -97,17 +98,16 @@ class TextAgent(Agent):
         print(f"Your health: {personal_state.health}")
         print(f"Opponent's health: {opponent_state.health}")
         print("Your items:")
-        self._print_items(personal_state.inventory)
+        self._print_items(personal_state)
         print("Your opponent's items")
-        self._print_items(opponent_state.inventory)
+        self._print_items(opponent_state)
 
     @staticmethod
-    def _print_items(items: MappingProxyType[Item, int]):
-        total_count = sum(items.values())
-        if total_count == 0:
+    def _print_items(state: PlayerState):
+        if state.total_items == 0:
             print("Nothing.")
         else:
-            for item, count in items.items():
+            for item, count in state.items():
                 if count > 0:
                     print(f"{item.name} ({count})")
 

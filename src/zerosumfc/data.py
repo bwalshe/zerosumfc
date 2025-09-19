@@ -1,9 +1,9 @@
 """Data classes used by the game and the agents to communicate."""
 
 from abc import ABC
-from copy import copy, replace
+from copy import copy
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum, auto, unique
 from types import MappingProxyType
 from typing import ClassVar
@@ -79,7 +79,11 @@ class PlayerState:
     MAX_ITEMS: ClassVar[int] = 8
 
     health: int
-    inventory: MappingProxyType[Item, int] = MappingProxyType(dict())
+    glass_count: int = 0
+    beer_count: int = 0
+    saw_count: int = 0
+    handcuffs_count: int = 0
+    cigarettes_count: int = 0
 
     def damage(self, amount: int) -> "PlayerState":
         """Reduce health bracketed above 0."""
@@ -97,12 +101,22 @@ class PlayerState:
         The maximum number of items is controlled by
         PlayerStateManager.MAX_ITEMS.
         """
-        item_count = sum(self.inventory.values())
-        if item_count >= self.MAX_ITEMS:
+        if self.total_items >= self.MAX_ITEMS:
             return self
-        new_inventory = dict(self.inventory)
-        new_inventory[item] = new_inventory.get(item, 0) + 1
-        return replace(self, inventory=MappingProxyType(new_inventory))
+
+        match item:
+            case Item.GLASS:
+                return replace(self, glass_count=self.glass_count + 1)
+            case Item.BEER:
+                return replace(self, beer_count=self.beer_count + 1)
+            case Item.HANDCUFFS:
+                return replace(self, handcuffs_count=self.handcuffs_count + 1)
+            case Item.CIGARETTES:
+                return replace(
+                    self, cigarettes_count=self.cigarettes_count + 1
+                )
+            case Item.SAW:
+                return replace(self, saw_count=self.saw_count + 1)
 
     def add_all(self, items: Sequence[Item]) -> "PlayerState":
         """Add multiple items to the inventory."""
@@ -113,15 +127,51 @@ class PlayerState:
 
     def take_item(self, item: Item) -> tuple[bool, "PlayerState"]:
         """If the item count is greater than 0, use up the item."""
+        found = False
+        state = self
         if item in self:
-            new_inventory = dict(self.inventory)
-            new_inventory[item] -= 1
-            return True, replace(self, inventory=new_inventory)
-        return False, self
+            found = True
+            match item:
+                case Item.GLASS:
+                    state = replace(self, glass_count=self.glass_count - 1)
+                case Item.BEER:
+                    state = replace(self, beer_count=self.beer_count - 1)
+                case Item.HANDCUFFS:
+                    state = replace(
+                        self, handcuffs_count=self.handcuffs_count - 1
+                    )
+                case Item.CIGARETTES:
+                    state = replace(
+                        self, cigarettes_count=self.cigarettes_count - 1
+                    )
+                case Item.SAW:
+                    state = replace(self, saw_count=self.saw_count - 1)
+        return found, state
+
+    def __getitem__(self, item: Item) -> int:
+        match item:
+            case Item.GLASS:
+                return self.glass_count
+            case Item.BEER:
+                return self.beer_count
+            case Item.HANDCUFFS:
+                return self.handcuffs_count
+            case Item.CIGARETTES:
+                return self.cigarettes_count
+            case Item.SAW:
+                return self.saw_count
+
+    def items(self):
+        for item in list(Item):
+            yield item, self[item]
+
+    @property
+    def total_items(self) -> int:
+        return sum(self[item] for item in list(Item))
 
     def __contains__(self, item: Item) -> bool:
         """Return true if the player have the item in their inventory."""
-        return self.inventory.get(item, 0) > 0
+        return self[item] > 0
 
 
 @dataclass(frozen=True)
@@ -167,7 +217,9 @@ class GameState:
     def end_turn(self) -> "GameState":
         if self.handcuffs_active:
             return replace(self, handcuffs_active=False)
-        return replace(self.reset_modifiers(), current_player=self.current_player.opponent)
+        return replace(
+            self.reset_modifiers(), current_player=self.current_player.opponent
+        )
 
     def shoot(self, shell: Shell, target: Role) -> "GameState":
         """Reduce health bracketed above 0."""
@@ -177,10 +229,7 @@ class GameState:
         if self.saw_active:
             amount *= 2
         player_state = self[target].damage(amount)
-        return (
-            self._replace_player(player_state, target)
-            .end_turn()
-        )
+        return self._replace_player(player_state, target).end_turn()
 
     def heal_current_player(self, amount: int) -> "GameState":
         """Increase health, bracketed to stay <= max_health."""
@@ -211,7 +260,7 @@ class GameState:
         else:
             return replace(self, player_state=player_state)
 
-    def set_player(self, player:Role, **kwargs):
+    def set_player(self, player: Role, **kwargs):
         new_player_state = replace(self[player], **kwargs)
         return self._replace_player(new_player_state, player)
 

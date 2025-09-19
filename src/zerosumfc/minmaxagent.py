@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field, replace
+from functools import cache
 
 from zerosumfc.agents import Agent
 from zerosumfc.data import (
@@ -139,6 +140,7 @@ class MoveOption:
     move: Action | None = field(compare=False)
 
 
+@cache
 def pick_move(state: MinMaxState) -> MoveOption:
     visible_state = state.visible_state
     if visible_state.player_state.health == 0:
