@@ -10,6 +10,7 @@ from zerosumfc.data import (
     Item,
     Miss,
     Role,
+    See,
     Shell,
     Shoot,
     Use,
@@ -193,7 +194,10 @@ def score_move(state: MinMaxState, move: Action) -> MoveOption:
 class MinMaxAgent(Agent):
     def __init__(self, role: Role):
         super().__init__(role)
+        self._last_move = None
+        self._next_shell = None
         self.reset_shells(0, 0)
+
 
     def reset_shells(self, live: int, blank: int) -> None:
         self._live = live
@@ -208,23 +212,33 @@ class MinMaxAgent(Agent):
             visible_state=state,
             live_shells=self._live,
             blank_shells=self._blank,
+            next_shell=self._next_shell
         )
         best_move = pick_move(known_state).move
         if best_move is None:
             raise ValueError(
                 f"There does not appear to be any valid move for state {state}"
             )
+        self._last_move = best_move
         return best_move
 
     def receive_feedback(self, feedback: Feedback):
-        self._update_counts(feedback)
+        match self._last_move:
+            case Use(Item.BEER):
+                self._update_counts(feedback)
+            case Use(Item.GLASS):
+                match feedback:
+                    case See(shell):
+                        self._next_shell=shell
 
-    def opponent_move(self, _: Action, feedback: Feedback):
-        self._update_counts(feedback)
+    def opponent_move(self, action: Action, feedback: Feedback):
+        match action:
+            case Shoot(_) | Use(Item.BEER):
+                self._update_counts(feedback)
 
     def _update_counts(self, feedback: Feedback):
         match feedback:
-            case Hit(_):
+            case Hit(_) | See(Shell.LIVE):
                 self._live -= 1
-            case Miss():
+            case Miss() | See(Shell.BLANK):
                 self._blank -= 1

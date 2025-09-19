@@ -216,7 +216,7 @@ class GameState:
 
     def end_turn(self) -> "GameState":
         if self.handcuffs_active:
-            return replace(self, handcuffs_active=False)
+            return self.reset_modifiers()
         return replace(
             self.reset_modifiers(), current_player=self.current_player.opponent
         )
@@ -224,7 +224,7 @@ class GameState:
     def shoot(self, shell: Shell, target: Role) -> "GameState":
         """Reduce health bracketed above 0."""
         if shell == Shell.BLANK and target == self.current_player:
-            return self
+            return replace(self, saw_active=False)
         amount = 1 if shell == Shell.LIVE else 0
         if self.saw_active:
             amount *= 2

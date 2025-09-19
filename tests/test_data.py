@@ -166,6 +166,62 @@ def test_game_state_end_turn(handcuffs_active, next_player):
     assert not new_state.handcuffs_active
 
 
+@pytest.mark.parametrize(
+    "handcuffs_active,shell,target,next_player",
+    [
+        (False, Shell.LIVE, Role.DEALER, Role.DEALER),
+        (False, Shell.LIVE, Role.PLAYER, Role.DEALER),
+        (False, Shell.BLANK, Role.DEALER, Role.DEALER),
+        (False, Shell.BLANK, Role.PLAYER, Role.PLAYER),
+        (True, Shell.LIVE, Role.DEALER, Role.PLAYER),
+        (True, Shell.LIVE, Role.PLAYER, Role.PLAYER),
+        (True, Shell.BLANK, Role.DEALER, Role.PLAYER),
+        (True, Shell.BLANK, Role.PLAYER, Role.PLAYER),
+    ],
+)
+def test_game_state_shoot_next_player(
+    handcuffs_active, shell, target, next_player
+):
+    state: GameState = replace(
+        GameState.new(1), handcuffs_active=handcuffs_active
+    )
+    assert state.current_player == Role.PLAYER
+    new_state = state.shoot(shell, target)
+    assert new_state.current_player == next_player
+
+
+@pytest.mark.parametrize(
+    "target,shell,expected",
+    [
+        (Role.DEALER, Shell.LIVE, False),
+        (Role.PLAYER, Shell.LIVE, False),
+        (Role.DEALER, Shell.BLANK, False),
+        (Role.PLAYER, Shell.BLANK, True),
+    ],
+)
+def test_game_state_shoot_reset_handcuffs(target, shell, expected):
+    state: GameState = replace(GameState.new(1), handcuffs_active=True)
+    assert state.current_player == Role.PLAYER
+    assert state.handcuffs_active
+    new_state = state.shoot(shell, target)
+    assert new_state.handcuffs_active == expected
+
+@pytest.mark.parametrize(
+    "target,shell",
+    [
+        (Role.DEALER, Shell.LIVE),
+        (Role.PLAYER, Shell.LIVE),
+        (Role.DEALER, Shell.BLANK),
+        (Role.PLAYER, Shell.BLANK),
+    ],
+)
+def test_game_state_shoot_reset_saw(target, shell):
+    state: GameState = replace(GameState.new(1), saw_active=True)
+    assert state.current_player == Role.PLAYER
+    assert state.saw_active
+    new_state = state.shoot(shell, target)
+    assert not new_state.saw_active
+
 def test_game_state_heal_current_player():
     current_player = Role.PLAYER
     initial_health = 5

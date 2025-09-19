@@ -148,7 +148,8 @@ class Game:
             feedback = self._perform_action(action)
             logger.info(self._state)
             shooter.receive_feedback(feedback)
-            opponent.opponent_move(action, feedback)
+            opponent_feedback = feedback if action != Use(Item.GLASS) else None
+            opponent.opponent_move(action, opponent_feedback)
         return self._winner
 
     def _reload(self):
