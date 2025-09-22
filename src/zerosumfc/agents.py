@@ -66,7 +66,7 @@ class RandomAgent(Agent):
             Shoot(Role.PLAYER),
         ]
 
-        for item, count in state[self.role].inventory.items():
+        for item, count in state[self.role].items():
             if count > 0:
                 actions.append(Use(item))
         return random.choice(actions)

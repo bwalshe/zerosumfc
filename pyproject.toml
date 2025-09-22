@@ -21,7 +21,9 @@ description = "Zero Sum Fight Club"
 readme = "README.md"
 requires-python = ">=3.13"
 
-dependencies = []
+dependencies = [
+    "click>=8.3.0",
+]
 
 [tool.ruff]
 # Set the maximum line length to 79.
