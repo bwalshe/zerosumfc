@@ -78,3 +78,23 @@ class RandomAgent(Agent):
     def opponent_move(self, action: Action, result: Shell | None) -> None:
         """Ignored."""
         pass
+
+class BlasterAgent(Agent):
+    """This agent always chooses to shoot its opponent"""
+
+    def reset_shells(self, live: int, blank: int):
+        """Ignored."""
+        pass
+
+    def get_move(self, state: GameState) -> Action:
+        """Shoot the opponent"""
+        return Shoot(self.role.opponent)
+
+    def receive_feedback(self, feedback: Shell | None):
+        """Ignored."""
+        pass
+
+    def opponent_move(self, action: Action, result: Shell | None) -> None:
+        """Ignored."""
+        pass
+
