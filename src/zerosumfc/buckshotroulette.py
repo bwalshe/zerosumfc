@@ -158,7 +158,7 @@ class Game:
             agent.reset_shells(*counts)
 
     def _restock(self):
-        self._state = self._state.restock()
+        self._state = self._state.restock(0)
 
     @property
     def _winner(self) -> Role | None:

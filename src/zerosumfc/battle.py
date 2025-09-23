@@ -1,5 +1,6 @@
 import click
 import enum
+import logging
 
 from zerosumfc.agents import RandomAgent
 from zerosumfc.buckshotroulette import Game
@@ -25,7 +26,8 @@ def make_agent(agent_type: AgentType, role:Role):
 @click.argument("dealer_agent",
               type=click.Choice(AgentType, case_sensitive=False))
 @click.option("--rounds", type=int, default=10)
-def main(player_agent, dealer_agent, rounds):
+@click.option("--health", type=int, default=5)
+def main(player_agent, dealer_agent, rounds, health):
     player = make_agent(player_agent, Role.PLAYER)
     dealer = make_agent(dealer_agent, Role.DEALER)
 
@@ -33,7 +35,7 @@ def main(player_agent, dealer_agent, rounds):
     dealer_wins = 0
 
     for i in range(rounds):
-        game = Game(dealer=dealer, player=player, initial_health=5)
+        game = Game(dealer=dealer, player=player, initial_health=health)
         print(f"Running game {i}")
         winner = game.run()
         print(f"Winner is {winner}")
@@ -49,4 +51,7 @@ def main(player_agent, dealer_agent, rounds):
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        filename="battle.log", encoding="utf-8", level=logging.INFO
+    )
     main()
