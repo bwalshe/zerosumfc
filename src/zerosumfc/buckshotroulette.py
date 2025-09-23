@@ -2,11 +2,12 @@
 
 import logging
 import random
+import click
 from copy import copy
 from dataclasses import dataclass, replace
-import random
 
 from zerosumfc.agents import Agent
+from zerosumfc.cliutils import AgentChoice, AgentType, make_agent
 from zerosumfc.data import (
     Action,
     Feedback,
@@ -168,12 +169,14 @@ class Game:
             return Role.DEALER
 
 
-def main():
+@click.command()
+@click.option("--opponent", type=AgentChoice, default=AgentType.MINMAX)
+def main(opponent):
     """Run a game of Buckshot Roulette between the random agent and a human."""
     logging.basicConfig(
         filename="buckshot.log", encoding="utf-8", level=logging.INFO
     )
-    dealer = MinMaxAgent(Role.DEALER)
+    dealer = make_agent(opponent, Role.DEALER)
     player = TextAgent(Role.PLAYER)
     game = Game(dealer, player, 4)
     winner = game.run()

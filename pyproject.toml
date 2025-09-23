@@ -25,6 +25,10 @@ dependencies = [
     "click>=8.3.0",
 ]
 
+[project.scripts]
+buckshotroulette = "zerosumfc.buckshotroulette:main"
+zerosum-battle = "zerosumfc.battle:main"
+
 [tool.ruff]
 # Set the maximum line length to 79.
 line-length = 79

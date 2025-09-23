@@ -2,29 +2,13 @@ import click
 import enum
 import logging
 
-from zerosumfc.agents import RandomAgent
 from zerosumfc.buckshotroulette import Game
+from zerosumfc.cliutils import AgentChoice, make_agent
 from zerosumfc.data import Role
-from zerosumfc.minmaxagent import MinMaxAgent
-
-
-class AgentType(enum.Enum):
-    RANDOM = enum.auto()
-    MINMAX = enum.auto()
-
-
-def make_agent(agent_type: AgentType, role:Role):
-    match agent_type:
-        case AgentType.RANDOM:
-            return RandomAgent(role)
-        case AgentType.MINMAX:
-            return MinMaxAgent(role)
 
 @click.command()
-@click.argument("player_agent",
-              type=click.Choice(AgentType, case_sensitive=False))
-@click.argument("dealer_agent",
-              type=click.Choice(AgentType, case_sensitive=False))
+@click.argument("player_agent", type=AgentChoice)
+@click.argument("dealer_agent", type=AgentChoice)
 @click.option("--rounds", type=int, default=10)
 @click.option("--health", type=int, default=5)
 def main(player_agent, dealer_agent, rounds, health):
