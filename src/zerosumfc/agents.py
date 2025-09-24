@@ -3,7 +3,7 @@
 import random
 from abc import ABC, abstractmethod
 
-from .data import Action, Feedback, GameState, Role, Shell, Shoot, Use
+from .data import Action, Feedback, GameState, Item, Role, Shell, Shoot, Use
 
 
 class Agent(ABC):
@@ -88,6 +88,10 @@ class BlasterAgent(Agent):
 
     def get_move(self, state: GameState) -> Action:
         """Shoot the opponent"""
+        my_state = state[self.role]
+        if my_state.health < state.max_health and my_state[Item.CIGARETTES] > 0:
+            return Use(Item.CIGARETTES)
+
         return Shoot(self.role.opponent)
 
     def receive_feedback(self, feedback: Shell | None):
