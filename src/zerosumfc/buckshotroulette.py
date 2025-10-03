@@ -145,9 +145,12 @@ class Game:
             current_player = self._state.visible_state.current_player
             shooter = self._agents[current_player]
             opponent = self._agents[current_player.opponent]
-            action = shooter.get_move(self._state.visible_state)
-            feedback = self._perform_action(action)
             logger.info(self._state)
+            logger.info("Waiting on %s", current_player)
+            action = shooter.get_move(self._state.visible_state)
+            logger.info("%s chooses to %s", current_player, action)
+            feedback = self._perform_action(action)
+            logger.info("Result: %s", feedback)
             shooter.receive_feedback(feedback)
             opponent_feedback = feedback if action != Use(Item.GLASS) else None
             opponent.opponent_move(action, opponent_feedback)

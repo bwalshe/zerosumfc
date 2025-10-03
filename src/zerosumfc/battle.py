@@ -6,12 +6,19 @@ from zerosumfc.buckshotroulette import Game
 from zerosumfc.cliutils import AgentChoice, make_agent
 from zerosumfc.data import Role
 
+
 @click.command()
 @click.argument("player_agent", type=AgentChoice)
 @click.argument("dealer_agent", type=AgentChoice)
 @click.option("--rounds", type=int, default=10)
 @click.option("--health", type=int, default=5)
 def main(player_agent, dealer_agent, rounds, health):
+    logging.basicConfig(
+        format="%(asctime)s %(levelname)s: %(message)s",
+        filename="battle.log",
+        encoding="utf-8",
+        level=logging.INFO,
+    )
     player = make_agent(player_agent, Role.PLAYER)
     dealer = make_agent(dealer_agent, Role.DEALER)
 
@@ -35,7 +42,4 @@ def main(player_agent, dealer_agent, rounds, health):
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        filename="battle.log", encoding="utf-8", level=logging.INFO
-    )
     main()
