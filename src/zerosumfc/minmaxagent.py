@@ -31,8 +31,7 @@ StateList = list[StateProb]
 
 
 @dataclass(frozen=True)
-class MinMaxState:
-    visible_state: GameState
+class HiddenState:
     live_shells: int
     blank_shells: int
     next_shell: Shell | None = None
@@ -42,51 +41,79 @@ class MinMaxState:
             raise ValueError("Live shells must be non-negative")
         if self.blank_shells < 0:
             raise ValueError("Blank shells must be non-negative")
+        if self.live_shells == 0 and self.next_shell == Shell.LIVE:
+            raise ValueError("The next shell cannot be live.")
+        if self.blank_shells == 0 and self.next_shell == Shell.BLANK:
+            raise ValueError("The next shell cannot be a blank.")
+
+    def use(self, shell: Shell) -> "HiddenState":
+        match shell:
+            case Shell.LIVE:
+                return replace(
+                    self, live_shells=self.live_shells - 1, next_shell=None
+                )
+            case Shell.BLANK:
+                return replace(
+                    self, blank_shells=self.blank_shells - 1, next_shell=None
+                )
+
+    def count(self, shell: Shell):
+        match shell:
+            case Shell.LIVE:
+                return self.live_shells
+            case Shell.BLANK:
+                return self.blank_shells
+
+    def prob(self, shell: Shell):
+        count = self.count(shell)
+        if count == 0:
+            return 0
+        total = self.live_shells + self.blank_shells
+        return count / total
+
+
+@dataclass(frozen=True)
+class MinMaxState:
+    visible_state: GameState
+    hidden_state: HiddenState
 
     def shoot(self, target: Role) -> StateList:
-        live_state = (
-            MinMaxState(
-                visible_state=self.visible_state.shoot(Shell.LIVE, target),
-                live_shells=self.live_shells - 1,
-                blank_shells=self.blank_shells,
+        def make_state(shell):
+            return MinMaxState(
+                visible_state=self.visible_state.shoot(shell, target),
+                hidden_state=self.hidden_state.use(shell),
             )
-            if self.live_shells > 0
-            else None
-        )
-        blank_state = (
-            MinMaxState(
-                visible_state=self.visible_state.shoot(Shell.BLANK, target),
-                live_shells=self.live_shells,
-                blank_shells=self.blank_shells - 1,
-            )
-            if self.blank_shells > 0
-            else None
-        )
-        return self._shell_state(live_state, blank_state)
+
+        states = []
+
+        for shell in list(Shell):
+            if self.hidden_state.count(shell) > 0:
+                p_shell = self.hidden_state.prob(shell)
+                state = make_state(shell)
+                states.append(StateProb(p_shell, state))
+
+        return states
 
     def use_beer(self) -> StateList:
         new_visible_state = self._try_take(Item.BEER)
 
-        live_state = (
-            MinMaxState(
+        def make_state(shell):
+            new_hidden_state = self.hidden_state.use(shell)
+            return replace(
+                self,
                 visible_state=new_visible_state,
-                live_shells=self.live_shells - 1,
-                blank_shells=self.blank_shells,
+                hidden_state=new_hidden_state,
             )
-            if self.live_shells > 0
-            else None
-        )
 
-        blank_state = (
-            MinMaxState(
-                visible_state=new_visible_state,
-                live_shells=self.live_shells,
-                blank_shells=self.blank_shells - 1,
-            )
-            if self.blank_shells > 0
-            else None
-        )
-        return self._shell_state(live_state, blank_state)
+        states = []
+
+        for shell in list(Shell):
+            if self.hidden_state.count(shell) > 0:
+                p_shell = self.hidden_state.prob(shell)
+                state = make_state(shell)
+                states.append(StateProb(p_shell, state))
+
+        return states
 
     def use_cigarettes(self) -> StateList:
         new_visible_state = self._try_take(
@@ -101,23 +128,23 @@ class MinMaxState:
 
     def use_glass(self) -> StateList:
         new_visible_state = self._try_take(Item.GLASS)
-        live_state = (
-            replace(
-                self, next_shell=Shell.LIVE, visible_state=new_visible_state
-            )
-            if self.live_shells > 0
-            else None
-        )
 
-        blank_state = (
-            replace(
-                self, next_shell=Shell.BLANK, visible_state=new_visible_state
+        def make_state(shell):
+            return replace(
+                self,
+                visible_state=new_visible_state,
+                hidden_state=replace(self.hidden_state, next_shell=shell),
             )
-            if self.blank_shells > 0
-            else None
-        )
 
-        return self._shell_state(live_state, blank_state)
+        states = []
+
+        for shell in list(Shell):
+            if self.hidden_state.count(shell) > 0:
+                p_shell = self.hidden_state.prob(shell)
+                state = make_state(shell)
+                states.append(StateProb(p_shell, state))
+
+        return states
 
     def use_saw(self) -> StateList:
         new_visible_state = self._try_take(Item.SAW)
@@ -148,31 +175,6 @@ class MinMaxState:
             case _:
                 raise ValueError(f"action cannot be {action}")
 
-    def _shell_state(self, live_state, blank_state) -> StateList:
-        if self.blank_shells == 0 and self.live_shells == 0:
-            raise ValueError(
-                "_shell_state() should not be called "
-                "when there are no shells left"
-            )
-        if (
-            blank_state is None
-            or self.next_shell == Shell.LIVE
-            or self.blank_shells == 0
-        ):
-            return [StateProb(1.0, live_state)]
-        if (
-            live_state is None
-            or self.next_shell == Shell.BLANK
-            or self.live_shells == 0
-        ):
-            return [StateProb(1.0, blank_state)]
-
-        p_live = self.live_shells / (self.live_shells + self.blank_shells)
-        return [
-            StateProb(p_live, live_state),
-            StateProb(1 - p_live, blank_state),
-        ]
-
     def _try_take(self, item: Item) -> GameState:
         success, state = self.visible_state.take_item(item)
         if not success:
@@ -188,17 +190,18 @@ class MoveOption:
 
 @cache
 def pick_move(state: MinMaxState) -> MoveOption:
-    logger.debug(f"pick_move() called with state: {state}")
+    # logger.debug(f"pick_move() called with state: {state}")
     visible_state = state.visible_state
+    hidden_state = state.hidden_state
     if visible_state.player_state.health == 0:
-        logger.debug("Player has lost, no moves to make")
+        #    logger.debug("Player has lost, no moves to make")
         return MoveOption(0.0, None)
     if visible_state.dealer_state.health == 0:
-        logger.debug("Player has won, no moves to make")
+        #   logger.debug("Player has won, no moves to make")
         return MoveOption(1.0, None)
 
-    if state.blank_shells == 0 and state.live_shells == 0:
-        logger.debug("No shells left estimating p_win")
+    if hidden_state.blank_shells == 0 and hidden_state.live_shells == 0:
+        #  logger.debug("No shells left estimating p_win")
         p_win = visible_state.player_state.health / (
             visible_state.player_state.health
             + visible_state.dealer_state.health
@@ -206,23 +209,17 @@ def pick_move(state: MinMaxState) -> MoveOption:
         return MoveOption(p_win, None)
 
     options = list_moves(state)
-    logger.debug("options are %s", options)
+    # logger.debug("options are %s", options)
     options = [score_move(state, move) for move in options]
 
-    logger.debug("Scored options are %s", options)
+    # logger.debug("Scored options are %s", options)
     best_move = None
     if visible_state.current_player == Role.PLAYER:
-        logger.debug("Maximizing Player win probabity")
+        #   logger.debug("Maximizing Player win probabity")
         best_move = max(options)
     else:
-        logger.debug("Minimizing Player win probabilty")
+        #  logger.debug("Minimizing Player win probabilty")
         best_move = min(options)
-    logger.debug(
-        "best move for %s at %s is %s",
-        visible_state.current_player,
-        state,
-        best_move,
-    )
     return best_move
 
 
@@ -236,7 +233,7 @@ def list_moves(state: MinMaxState) -> list[Action]:
     moves: list[Action] = [Shoot(target) for target in list(Role)]
     if Item.BEER in player_state:
         moves.append(Use(Item.BEER))
-    if Item.GLASS in player_state and state.next_shell is None:
+    if Item.GLASS in player_state and state.hidden_state.next_shell is None:
         moves.append(Use(Item.GLASS))
     if (
         Item.HANDCUFFS in player_state
@@ -258,64 +255,58 @@ class MinMaxAgent(Agent):
     def __init__(self, role: Role):
         super().__init__(role)
         self._last_move = None
-        self._next_shell = None
         self.reset_shells(0, 0)
 
     def reset_shells(self, live: int, blank: int) -> None:
-        self._live = live
-        self._blank = blank
+        self._hidden_state = HiddenState(live, blank)
 
     def get_move(self, state: GameState) -> Action:
-        logger.debug("Starting searching for best move")
+        logger.debug("%s starting searching for best move", self.role)
         my_state = state[self.role]
         if my_state.health < state.max_health and Item.CIGARETTES in my_state:
             logger.debug("Health is below max, using cigarettes")
             return Use(Item.CIGARETTES)
 
         known_state = MinMaxState(
-            visible_state=state,
-            live_shells=self._live,
-            blank_shells=self._blank,
-            next_shell=self._next_shell,
+            visible_state=state, hidden_state=self._hidden_state
         )
+
+        logger.debug("Known state is %s", known_state)
         best_move = pick_move(known_state).move
 
-        logger.debug(
-            "Decided that %s is the best move for %s", best_move, known_state
-        )
+        logger.debug("Decided that the best move is %s", best_move)
         if best_move is None:
             raise ValueError(
                 f"There does not appear to be any valid move for state {state}"
             )
         self._last_move = best_move
-        if type(self._last_move) is Shoot:
-            self._next_shell = None
+
         return best_move
 
+    def _use_shell(self, shell):
+        self._hidden_state = self._hidden_state.use(shell)
+
+    def _set_next_shell(self, shell):
+        self._hidden_state = replace(self._hidden_state, next_shell=shell)
+
     def receive_feedback(self, feedback: Feedback):
-        match self._last_move:
-            case Use(Item.BEER):
-                self._update_counts(feedback)
-            case Use(Item.GLASS):
-                match feedback:
-                    case See(shell):
-                        self._next_shell = shell
+        match feedback:
+            case Hit(_):
+                self._use_shell(Shell.LIVE)
+            case Miss():
+                self._use_shell(Shell.BLANK)
+            case See(shell):
+                match self._last_move:
+                    case Use(Item.BEER):
+                        self._use_shell(shell)
+                    case Use(Item.GLASS):
+                        self._set_next_shell(shell)
 
     def opponent_move(self, action: Action, feedback: Feedback):
-        match action:
-            case Shoot(_) | Use(Item.BEER):
-                self._update_counts(feedback)
-
-    def _update_counts(self, feedback: Feedback):
         match feedback:
-            case Hit(_) | See(Shell.LIVE):
-                self._next_shell=None
-                self._live -= 1
-            case Miss() | See(Shell.BLANK):
-                self._next_shell=None
-                self._blank -= 1
-        if self._live < 0 or self._blank < 0:
-            raise ValueError(
-                f"Agent thinks it has a negative shells: "
-                "(live, blank) = ({self._live}, {self._blank})"
-            )
+            case Hit(_):
+                self._use_shell(Shell.LIVE)
+            case Miss():
+                self._use_shell(Shell.BLANK)
+            case See(shell):
+                self._use_shell(shell)

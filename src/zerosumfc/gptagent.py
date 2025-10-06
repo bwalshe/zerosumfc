@@ -125,7 +125,6 @@ class GptAgent(Agent):
         self._add_event(request)
         response = self._get_response()
         logger.info("API usage: %s", response.usage)
-        logger.info("popmpt_cache_key=%s", response.prompt_cache_key)
 
         match response.output_parsed:
             case None:
@@ -151,8 +150,7 @@ class GptAgent(Agent):
             reasoning={"effort": self.EFFORT},
             input=self._unsent_messages,
             text_format=GptResponse,
-            previous_response_id=self._previous_response_id,
-            service_tier="priority"
+            previous_response_id=self._previous_response_id
         )
         self._previous_response_id = response.id
         self._unsent_messages = list()

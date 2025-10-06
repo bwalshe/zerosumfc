@@ -4,7 +4,7 @@ import pathlib
 import click
 
 from zerosumfc.buckshotroulette import Game
-from zerosumfc.cliutils import AgentChoice, make_agent
+from zerosumfc.cliutils import AgentChoice, getLoggingLevel, make_agent
 from zerosumfc.data import Role
 
 
@@ -34,7 +34,7 @@ def main(player_agent, dealer_agent, rounds, health):
         format="%(asctime)s %(levelname)s: %(message)s",
         filename=log_dir / logfile,
         encoding="utf-8",
-        level=logging.INFO,
+        level=getLoggingLevel(logging.INFO),
     )
     print_and_log(
         f"Evaluating player: {player_agent} vs dealer: {dealer_agent}"
