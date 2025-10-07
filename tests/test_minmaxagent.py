@@ -4,6 +4,7 @@ from zerosumfc.buckshotroulette import FullGameState, Game
 from zerosumfc.data import GameState, Item, Role, PlayerState, Shell, Shoot
 from zerosumfc.minmaxagent import (
     HiddenState,
+    MinMaxAgent,
     MinMaxState,
     pick_move,
     StateProb,
@@ -213,3 +214,39 @@ def test_picks_shoot_to_end(player: Role):
     )
 
     assert pick_move(state).move == Shoot(player.opponent)
+
+
+
+@pytest.mark.parametrize("num_blanks", [1,2,3])
+def test_scenenario_choose_shoot_self_no_live_left(num_blanks):
+    """This is flakey as it uses random sampling to make a decision"""
+    state = MinMaxState(
+        visible_state=GameState(
+            player_state=PlayerState(
+                health=2,
+                glass_count=0,
+                beer_count=0,
+                saw_count=0,
+                handcuffs_count=0,
+                cigarettes_count=0,
+            ),
+            dealer_state=PlayerState(
+                health=2,
+                glass_count=0,
+                beer_count=0,
+                saw_count=0,
+                handcuffs_count=0,
+                cigarettes_count=0,
+            ),
+            max_health=5,
+            current_player=Role.PLAYER,
+            saw_active=False,
+            handcuffs_active=False,
+        ),
+        hidden_state=HiddenState(
+            live_shells=0, blank_shells=num_blanks, next_shell=None
+        ),
+    )
+    move = pick_move(state)
+    assert move.move == Shoot(Role.PLAYER)
+

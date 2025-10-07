@@ -145,4 +145,4 @@ def test_game_state_manager_next_player(target, shell, next_player):
 def test_game_state_manager_next_player_after_reload(role):
     state = set_visible_state(FullGameState.new(10), current_player=role)
     _, new_state = state.reload()
-    assert new_state.visible_state.current_player == Role.PLAYER
+    assert new_state.visible_state.current_player == role

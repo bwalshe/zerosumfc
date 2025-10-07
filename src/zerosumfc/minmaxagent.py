@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field, replace
 from functools import cache
 import logging
+import random
 
 from zerosumfc.agents import Agent
 from zerosumfc.data import (
@@ -188,6 +189,38 @@ class MoveOption:
     move: Action | None = field(compare=False)
 
 
+def p_win_sample(player, dealer, player_next, trials=1000):
+    # TODO: There should be a closed form for this
+    def move(p1, p2, p1_next):
+        if random.choice([True, False]):
+            if p1_next:
+                return p1, p2 - 1, not p1_next
+            else:
+                return p1 - 1, p2, not p1_next
+        return p1, p2, not p1_next
+
+    def is_win(p1, p2, _):
+        return p1 != 0 and p2 == 0
+
+    def is_loss(p1, p2, _):
+        return p1 == 0 and p2 != 0
+
+    wins = 0
+
+    max_iter = 100
+
+    for _ in range(trials):
+        state = (player, dealer, player_next)
+        for _ in range(max_iter):
+            state = move(*state)
+            if is_win(*state):
+                wins += 1
+                break
+            if is_loss(*state):
+                break
+    return wins / trials
+
+
 @cache
 def pick_move(state: MinMaxState) -> MoveOption:
     # logger.debug(f"pick_move() called with state: {state}")
@@ -201,12 +234,14 @@ def pick_move(state: MinMaxState) -> MoveOption:
         return MoveOption(1.0, None)
 
     if hidden_state.blank_shells == 0 and hidden_state.live_shells == 0:
-        #  logger.debug("No shells left estimating p_win")
-        p_win = visible_state.player_state.health / (
-            visible_state.player_state.health
-            + visible_state.dealer_state.health
+        # logger.debug("No shells left estimating p_win")
+        player_health = visible_state.player_state.health
+        dealer_health = visible_state.player_state.health
+        player_next = visible_state.current_player == Role.PLAYER
+        p_win = p_win_sample(player_health, dealer_health, player_next, 1000)
+        return MoveOption(
+            p_win, None
         )
-        return MoveOption(p_win, None)
 
     options = list_moves(state)
     # logger.debug("options are %s", options)

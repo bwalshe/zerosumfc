@@ -92,7 +92,7 @@ class FullGameState:
         shells = [Shell.LIVE] * live + [Shell.BLANK] * blank
         random.shuffle(shells)
         state = replace(self, shells=shells)
-        state = _replace_visible(state, current_player=Role.PLAYER)
+        #state = _replace_visible(state, current_player=Role.PLAYER)
         return (live, blank), state
 
     def restock(self, num_items=3) -> "FullGameState":
